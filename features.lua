@@ -68,42 +68,58 @@ function F.ToggleInfJump(state)
     end
 end
 
+-- Fly — легальный (2 studs над землёй)
 local flyActive = false
-local flyBV, flyBG, flyConn
+local flyBV, flyConn
 function F.ToggleFly(state)
     flyActive = state
     if state then
         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+        local hum = LP.Character:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+
         flyBV = Instance.new("BodyVelocity")
         flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
         flyBV.Velocity = Vector3.zero
         flyBV.Parent = hrp
-        flyBG = Instance.new("BodyGyro")
-        flyBG.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-        flyBG.P = 1000
-        flyBG.Parent = hrp
+
         flyConn = RunService.RenderStepped:Connect(function()
             if not flyActive or not hrp or not hrp.Parent then return end
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = { LP.Character }
+            params.IgnoreWater = true
+            local result = workspace:Raycast(hrp.Position, Vector3.new(0, -50, 0), params)
+            local groundY = result and result.Position.Y or (hrp.Position.Y - 5)
+            local targetY = groundY + 2
+
             local move = Vector3.zero
             local cam = Camera.CFrame
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
             if move.Magnitude > 0 then move = move.Unit end
-            flyBV.Velocity = move * 60
-            flyBG.CFrame = cam
+
+            local yDiff = targetY - hrp.Position.Y
+            flyBV.Velocity = Vector3.new(
+                move.X * 60,
+                math.clamp(yDiff * 5, -30, 30),
+                move.Z * 60
+            )
         end)
+
+        if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false) end
     else
         if flyConn then flyConn:Disconnect(); flyConn = nil end
         if flyBV then flyBV:Destroy(); flyBV = nil end
-        if flyBG then flyBG:Destroy(); flyBG = nil end
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true) end
     end
 end
 
+-- Noclip
 local Noclip = { active = false, speed = 60, platform = nil, bv = nil, conns = {} }
 F.Noclip = Noclip
 
@@ -129,10 +145,7 @@ local function EnableHardNoclip()
     if not hrp or not hum then return end
 
     Noclip.platform = CreateNoclipPlatform()
-    Noclip.platform.CanCollide = true
-    Noclip.platform.Size = Vector3.new(6, 1, 6)
     Noclip.platform.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 3, 0))
-    Noclip.platform.Parent = workspace
 
     local weld = Instance.new("WeldConstraint")
     weld.Part0 = hrp
@@ -180,9 +193,7 @@ local function EnableHardNoclip()
         local c = LP.Character
         if not c then return end
         for _, p in ipairs(c:GetDescendants()) do
-            if p:IsA("BasePart") and p.CanCollide then
-                p.CanCollide = false
-            end
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
         end
     end))
 
@@ -227,44 +238,61 @@ function F.ToggleHardNoclip(state)
     end
 end
 
+-- Fall Damage — micro-hop
 local fallDamageBag = nil
 function F.ToggleFallDamage(state)
     if state then
         fallDamageBag = NewConnBag()
+        local HOP_HEIGHT = 2.5
+        local MIN_FALL_SPEED = -45
+        local GROUND_CHECK = 8
 
-        fallDamageBag:add(RunService.Stepped:Connect(function()
+        fallDamageBag:add(RunService.Heartbeat:Connect(function()
             local char = LP.Character
             if not char then return end
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
             local vel = hrp.AssemblyLinearVelocity
+            if vel.Y >= MIN_FALL_SPEED then return end
+
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = { char }
+            params.IgnoreWater = true
+            local result = workspace:Raycast(hrp.Position, Vector3.new(0, -GROUND_CHECK, 0), params)
+            if not result then return end
+
+            local distToGround = hrp.Position.Y - result.Position.Y
+            if distToGround <= 1.5 then
+                hrp.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+                hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + HOP_HEIGHT, hrp.Position.Z)
+            end
             if vel.Y < -50 then
                 hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -50, vel.Z)
             end
         end))
 
-        fallDamageBag:add(RunService.Heartbeat:Connect(function()
-            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            if hum:GetState() == Enum.HumanoidStateType.Freefall then
-                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
-            end
-        end))
+        local function hookHum(hum)
+            fallDamageBag:add(hum.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.Freefall then
+                    task.delay(0.15, function()
+                        if hum.Parent and hum:GetState() == Enum.HumanoidStateType.Freefall then
+                            hum:ChangeState(Enum.HumanoidStateType.Running)
+                        end
+                    end)
+                end
+            end))
+        end
 
-        local function hookChar(char)
+        if LP.Character then
+            local hum = LP.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hookHum(hum) end
+        end
+        fallDamageBag:add(LP.CharacterAdded:Connect(function(char)
             task.wait(0.3)
             local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            hum.StateChanged:Connect(function(_, newState)
-                if newState == Enum.HumanoidStateType.Freefall then
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                end
-            end)
-        end
-        if LP.Character then hookChar(LP.Character) end
-        fallDamageBag:add(LP.CharacterAdded:Connect(hookChar))
+            if hum then hookHum(hum) end
+        end))
     else
         if fallDamageBag then fallDamageBag:destroy(); fallDamageBag = nil end
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
@@ -272,7 +300,8 @@ function F.ToggleFallDamage(state)
     end
 end
 
-local WallClimb = { active = false, speed = 45, push = 5, bv = nil, conn = nil, key = Enum.KeyCode.Space }
+-- Wall Climb — медленный
+local WallClimb = { active = false, speed = 15, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
 F.WallClimb = WallClimb
 
 local function WallClimbRay()
@@ -293,7 +322,7 @@ function F.ToggleWallClimb(state)
         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
         WallClimb.bv = Instance.new("BodyVelocity")
-        WallClimb.bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        WallClimb.bv.MaxForce = Vector3.new(2e4, 2e4, 2e4)
         WallClimb.bv.Velocity = Vector3.zero
         WallClimb.bv.Parent = hrp
         WallClimb.conn = RunService.RenderStepped:Connect(function()
@@ -314,7 +343,7 @@ function F.ToggleWallClimb(state)
                 WallClimb.bv.Velocity = Vector3.zero
                 return
             end
-            WallClimb.bv.Velocity = Vector3.new(0, WallClimb.speed, 0) + (-normal * WallClimb.push)
+            WallClimb.bv.Velocity = Vector3.new(0, 15, 0) + (-normal * WallClimb.push)
         end)
     else
         if WallClimb.conn then WallClimb.conn:Disconnect(); WallClimb.conn = nil end
@@ -322,6 +351,7 @@ function F.ToggleWallClimb(state)
     end
 end
 
+-- Freecam — с ограничением горизонта
 local Freecam = { active = false, pos = Vector3.zero, rot = CFrame.new(), speed = 60, hud = nil, conn = nil }
 F.Freecam = Freecam
 
@@ -362,6 +392,11 @@ function F.ToggleFreecam(state)
                 local yaw = CFrame.Angles(0, math.rad(-delta.X * 0.35), 0)
                 local pitch = CFrame.Angles(math.rad(-delta.Y * 0.35), 0, 0)
                 Freecam.rot = Freecam.rot * yaw * pitch
+                local rx, ry, _ = Freecam.rot:ToEulerAnglesYXZ()
+                local MAX_PITCH = math.rad(85)
+                if rx > MAX_PITCH then rx = MAX_PITCH end
+                if rx < -MAX_PITCH then rx = -MAX_PITCH end
+                Freecam.rot = CFrame.new(Freecam.rot.Position) * CFrame.Angles(rx, ry, 0)
             end
             local move = Vector3.zero
             if UserInputService.KeyboardEnabled then
@@ -399,11 +434,69 @@ function F.ToggleFreecam(state)
     end
 end
 
+-- Freecam Follow — персонаж следует за камерой
+local FreecamFollow = {
+    enabled = false,
+    key = Enum.KeyCode.T,
+    tpInterval = 0.1,
+    lastTP = 0,
+    conn = nil,
+}
+F.FreecamFollow = FreecamFollow
+
+local function StartFreecamFollow()
+    if FreecamFollow.conn then return end
+    FreecamFollow.conn = RunService.Heartbeat:Connect(function()
+        if not FreecamFollow.enabled then return end
+        if not Freecam.active then return end
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local now = tick()
+        if now - FreecamFollow.lastTP < FreecamFollow.tpInterval then return end
+        FreecamFollow.lastTP = now
+        local targetPos = Freecam.pos - Vector3.new(0, 3, 0)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+        hrp.CFrame = CFrame.new(targetPos)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end)
+end
+
+local function StopFreecamFollow()
+    if FreecamFollow.conn then
+        FreecamFollow.conn:Disconnect()
+        FreecamFollow.conn = nil
+    end
+end
+
+function F.ToggleFreecamFollow(state)
+    FreecamFollow.enabled = state
+    if state then
+        if not Freecam.active then F.ToggleFreecam(true) end
+        StartFreecamFollow()
+        PlaySound("default")
+        print("[Rusted FreecamFollow] ON — press T to disable")
+    else
+        StopFreecamFollow()
+        print("[Rusted FreecamFollow] OFF")
+    end
+end
+
+-- Хоткеи F (freecam) и T (follow)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.F then F.ToggleFreecam(not Freecam.active) end
+    if input.KeyCode == Enum.KeyCode.T then F.ToggleFreecamFollow(not FreecamFollow.enabled) end
 end)
 
+-- Void TP
 local VoidTP = {
     active = true, threshold = -80, targetY = 5,
     useSpawn = false, lastTP = 0, cooldown = 1,
@@ -682,6 +775,7 @@ local ESP = {
     maxDist = 1200,
     botMaxDist = 600,
     botLimit = 30,
+    mode = "highlight",
 }
 F.ESP = ESP
 
@@ -718,12 +812,17 @@ local WEAPON_KEYWORDS = {
 }
 
 local function MatchesWeapon(inst)
-    local n = string.lower(inst.Name)
+    local name = inst
+    if typeof(inst) == "Instance" then name = inst.Name end
+    if not name or type(name) ~= "string" then return false end
+    local n = string.lower(name)
     for _, kw in ipairs(WEAPON_KEYWORDS) do
         if n:find(kw, 1, true) then return true end
     end
     return false
 end
+
+local lastWeapons = {}
 
 local function GetPlayerWeapons(plr)
     local list, seen = {}, {}
@@ -739,7 +838,7 @@ local function GetPlayerWeapons(plr)
             elseif child:IsA("Model") and MatchesWeapon(child) then add(child.Name) end
         end
         for _, desc in ipairs(char:GetDescendants()) do
-            if (desc:IsA("Model") or desc:IsA("BasePart")) 
+            if (desc:IsA("Model") or desc:IsA("BasePart"))
             and MatchesWeapon(desc) and not desc:IsDescendantOf(espFolder) then
                 add(desc.Name)
             end
@@ -748,8 +847,18 @@ local function GetPlayerWeapons(plr)
     local bp = plr:FindFirstChildOfClass("Backpack")
     if bp then
         for _, child in ipairs(bp:GetChildren()) do
-            if child:IsA("Tool") then add(child.Name) end
+            if child:IsA("Tool") then add(child.Name)
+            elseif child:IsA("Model") and MatchesWeapon(child) then add(child.Name) end
         end
+    end
+    if #list == 0 and lastWeapons[plr] then
+        local cached = lastWeapons[plr]
+        if tick() - cached.time < 30 then
+            table.insert(list, cached.name .. " (last)")
+        end
+    end
+    if #list > 0 then
+        lastWeapons[plr] = { name = list[1], time = tick() }
     end
     return list
 end
@@ -776,6 +885,18 @@ local function CreateHighlight(plr)
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = espFolder
     return hl
+end
+
+local function CreatePlayerBox()
+    local b = Instance.new("BoxHandleAdornment")
+    b.Name = "RustedPlayerBox"
+    b.Size = Vector3.new(4, 5, 4)
+    b.AlwaysOnTop = true
+    b.ZIndex = 5
+    b.Transparency = 0.5
+    b.Adornee = nil
+    b.Parent = espFolder
+    return b
 end
 
 local function CreateInfoLabel()
@@ -809,6 +930,7 @@ local function AddPlayerESP(plr)
     if plr == LP or playerESP[plr] then return end
     playerESP[plr] = {
         highlight = CreateHighlight(plr),
+        box = CreatePlayerBox(),
         hue = math.random(),
         info = CreateInfoLabel(),
         visible = true,
@@ -819,6 +941,7 @@ local function RemovePlayerESP(plr)
     local d = playerESP[plr]
     if not d then return end
     if d.highlight then pcall(function() d.highlight:Destroy() end) end
+    if d.box then pcall(function() d.box:Destroy() end) end
     if d.info and d.info.gui then d.info.gui:Destroy() end
     playerESP[plr] = nil
 end
@@ -862,12 +985,10 @@ local BOX_KEYWORDS = {
 local function IsBoxPart(inst)
     if not inst:IsA("BasePart") then return false end
     local n = string.lower(inst.Name):gsub("[%s_%-%.]", "")
-
     for _, k in ipairs(BOX_KEYWORDS) do
         local kk = string.lower(k):gsub("[%s_%-%.]", "")
         if n == kk then return true end
     end
-
     local parent = inst.Parent
     if parent and parent:IsA("Model") then
         local pn = string.lower(parent.Name):gsub("[%s_%-%.]", "")
@@ -876,7 +997,6 @@ local function IsBoxPart(inst)
             if pn == kk then return true end
         end
     end
-
     local prompt = inst:FindFirstChildOfClass("ProximityPrompt")
     if prompt then
         local action = string.lower(prompt.ActionText or "")
@@ -884,7 +1004,6 @@ local function IsBoxPart(inst)
             return true
         end
     end
-
     return false
 end
 
@@ -934,30 +1053,19 @@ end
 
 local ORES = {
     metal = {
-        keywords = {
-            "metalore", "metal_ore", "metalore1", "metalore2",
-            "ironore", "iron_ore",
-            "hqmnode", "hqm_node", "hqm_ore",
-            "highqualitynode",
-        },
+        keywords = { "metalore", "metal_ore", "metalore1", "metalore2", "ironore", "iron_ore", "hqmnode", "hqm_node", "hqm_ore", "highqualitynode" },
         exactNames = { "MetalOre", "Metal Ore", "IronOre" },
         color = Color3.fromRGB(180, 180, 180),
         label = "Metal",
     },
     sulfur = {
-        keywords = {
-            "sulfurore", "sulfur_ore", "sulfurnode", "sulfur_node",
-            "sulphur", "sulphurore",
-        },
+        keywords = { "sulfurore", "sulfur_ore", "sulfurnode", "sulfur_node", "sulphur", "sulphurore" },
         exactNames = { "SulfurOre", "Sulfur Ore", "Sulphur" },
         color = Color3.fromRGB(255, 230, 60),
         label = "Sulfur",
     },
     stone = {
-        keywords = {
-            "stoneore", "stone_ore", "stonenode", "stone_node",
-            "rocknode", "rock_node", "orespawn",
-        },
+        keywords = { "stoneore", "stone_ore", "stonenode", "stone_node", "rocknode", "rock_node", "orespawn" },
         exactNames = { "StoneOre", "Stone Ore", "RockNode" },
         color = Color3.fromRGB(220, 60, 60),
         label = "Stone",
@@ -967,13 +1075,10 @@ F.ORES = ORES
 
 local function GetOreType(inst)
     if not inst:IsA("BasePart") and not inst:IsA("Model") then return nil end
-
     local names = { inst.Name }
     if inst.Parent then table.insert(names, inst.Parent.Name) end
-
     for _, rawName in ipairs(names) do
         local n = string.lower(rawName):gsub("[%s_%-%.]", "")
-
         for oreKey, data in pairs(ORES) do
             for _, exact in ipairs(data.exactNames) do
                 local e = string.lower(exact):gsub("[%s_%-%.]", "")
@@ -1625,7 +1730,6 @@ local function MoveToward(targetPos, dt)
     local diff = targetPos - current
     local horizDiff = Vector3.new(diff.X, 0, diff.Z)
     local horizDist = horizDiff.Magnitude
-
     if horizDist < 1 then return end
 
     if not AutoFarm._bv then
@@ -1642,15 +1746,10 @@ local function MoveToward(targetPos, dt)
     if AutoFarm.mode == "fly" then
         local targetY = targetPos.Y + AutoFarm.flyHeight
         local yDiff = targetY - current.Y
-        AutoFarm._bv.Velocity = Vector3.new(
-            dir.X * speed,
-            yDiff * 2,
-            dir.Z * speed
-        )
+        AutoFarm._bv.Velocity = Vector3.new(dir.X * speed, yDiff * 2, dir.Z * speed)
     else
         AutoFarm._bv.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
     end
-
     hrp.CFrame = CFrame.new(current, Vector3.new(targetPos.X, current.Y, targetPos.Z))
 end
 
@@ -1769,8 +1868,7 @@ local function CheckLimits()
             AutoFarm.stoppedBy = "time"
             PlaySound("farm_complete")
             task.spawn(PlayBeepSequence)
-            print(string.format("[Rusted AutoFarm] OK Time up (%.1f min). Mined: %d",
-                elapsed, AutoFarm.kills))
+            print(string.format("[Rusted AutoFarm] OK Time up (%.1f min). Mined: %d", elapsed, AutoFarm.kills))
             F.ToggleAutoFarm(false)
             return true
         end
@@ -2195,6 +2293,19 @@ local function CheckRemoteName(remote)
     return match
 end
 
+local function IsCodeUIOpen()
+    local pg = LP:FindFirstChildOfClass("PlayerGui")
+    if not pg then return false end
+    for _, gui in ipairs(pg:GetChildren()) do
+        local n = string.lower(gui.Name)
+        if (n:find("code") or n:find("keypad") or n:find("password") or n:find("pin"))
+        and gui:IsA("ScreenGui") and gui.Enabled then
+            return true
+        end
+    end
+    return false
+end
+
 function F.EnableCodeHook()
     if codeHookActive then
         print("[Rusted CodeHook] already active")
@@ -2205,7 +2316,7 @@ function F.EnableCodeHook()
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         if not codeHookActive then return oldNamecall(self, ...) end
         if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
-            if CheckRemoteName(self) then
+            if IsCodeUIOpen() and CheckRemoteName(self) then
                 local method = getnamecallmethod()
                 if method == "FireServer" or method == "InvokeServer" then
                     local args = {...}
@@ -2429,12 +2540,34 @@ RunService.RenderStepped:Connect(function(dt)
             if hrp and hum then
                 local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
                 if dist <= ESP.maxDist then
+                    local showHL = ESP.mode == "highlight" or ESP.mode == "both"
+                    local showBox = ESP.mode == "box" or ESP.mode == "both"
+
                     if d.highlight then
-                        d.highlight.Adornee = char
-                        if ESP.rainbow then
-                            d.highlight.OutlineColor = RainbowColor(d.hue)
+                        if showHL then
+                            d.highlight.Adornee = char
+                            if ESP.rainbow then
+                                d.highlight.OutlineColor = RainbowColor(d.hue)
+                            else
+                                d.highlight.OutlineColor = Color3.fromRGB(255, 80, 80)
+                            end
                         else
-                            d.highlight.OutlineColor = Color3.fromRGB(255, 80, 80)
+                            d.highlight.Adornee = nil
+                        end
+                    end
+
+                    if d.box then
+                        if showBox then
+                            d.box.Adornee = hrp
+                            d.box.Visible = true
+                            d.box.Size = Vector3.new(4, 5, 4)
+                            if ESP.rainbow then
+                                d.box.Color3 = RainbowColor(d.hue)
+                            else
+                                d.box.Color3 = Color3.fromRGB(255, 80, 80)
+                            end
+                        else
+                            d.box.Visible = false
                         end
                     end
 
@@ -2456,9 +2589,7 @@ RunService.RenderStepped:Connect(function(dt)
                             if ESP.rainbow then
                                 local col = RainbowColor(d.hue + 0.3)
                                 d.info.label.TextColor3 = col
-                                if d.info.stroke then
-                                    d.info.stroke.Color = col
-                                end
+                                if d.info.stroke then d.info.stroke.Color = col end
                             else
                                 local hpRatio = hum.Health / math.max(hum.MaxHealth, 1)
                                 d.info.label.TextColor3 = Color3.fromRGB(255,
@@ -2485,6 +2616,7 @@ RunService.RenderStepped:Connect(function(dt)
                     end
                 else
                     if d.highlight then d.highlight.Adornee = nil end
+                    if d.box then d.box.Visible = false end
                     if d.info then d.info.gui.Enabled = false end
                     if LookTracer.tracers[plr] then
                         LookTracer.tracers[plr].Transparency = 1
@@ -2492,6 +2624,7 @@ RunService.RenderStepped:Connect(function(dt)
                 end
             else
                 if d.highlight then d.highlight.Adornee = nil end
+                if d.box then d.box.Visible = false end
                 if d.info then d.info.gui.Adornee = nil end
                 if LookTracer.tracers[plr] then
                     KillLookTracer(LookTracer.tracers[plr])
@@ -2619,6 +2752,7 @@ function F.TogglePlayerESP(state)
     else
         for plr, d in pairs(playerESP) do
             if d.highlight then pcall(function() d.highlight:Destroy() end) end
+            if d.box then pcall(function() d.box:Destroy() end) end
             if d.info and d.info.gui then d.info.gui:Destroy() end
             playerESP[plr] = nil
         end
