@@ -104,19 +104,19 @@ function F.ToggleFly(state)
     end
 end
 
-local Noclip = { active = false, speed = 120, platform = nil, bv = nil, conns = {} }
+local Noclip = { active = false, speed = 60, platform = nil, bv = nil, conns = {} }
 F.Noclip = Noclip
 
 local function CreateNoclipPlatform()
     local p = Instance.new("Part")
     p.Name = "RustedNoclipPlatform"
-    p.Size = Vector3.new(4, 1, 4)
+    p.Size = Vector3.new(6, 1, 6)
     p.Transparency = 1
-    p.CanCollide = false
+    p.CanCollide = true
     p.CanQuery = false
     p.CanTouch = false
     p.Anchored = false
-    p.Massless = true
+    p.Massless = false
     p.Parent = workspace
     return p
 end
@@ -129,18 +129,21 @@ local function EnableHardNoclip()
     if not hrp or not hum then return end
 
     Noclip.platform = CreateNoclipPlatform()
+    Noclip.platform.CanCollide = true
+    Noclip.platform.Size = Vector3.new(6, 1, 6)
+    Noclip.platform.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 3, 0))
+    Noclip.platform.Parent = workspace
+
     local weld = Instance.new("WeldConstraint")
     weld.Part0 = hrp
     weld.Part1 = Noclip.platform
     weld.Parent = Noclip.platform
-    Noclip.platform.CFrame = hrp.CFrame
 
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then
             p.CanCollide = false
             p.CanQuery = false
             p.CanTouch = false
-            p.Massless = true
         end
     end
 
@@ -151,19 +154,24 @@ local function EnableHardNoclip()
     bv.Parent = hrp
     Noclip.bv = bv
 
-    table.insert(Noclip.conns, RunService.RenderStepped:Connect(function()
+    table.insert(Noclip.conns, RunService.Heartbeat:Connect(function()
         if not Noclip.active then return end
-        if not Noclip.bv or not Noclip.bv.Parent then return end
-        if not hrp or not hrp.Parent then return end
-        local moveDir = hum.MoveDirection
+        local c = LP.Character
+        if not c then return end
+        local myHrp = c:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+        local myHum = c:FindFirstChildOfClass("Humanoid")
+        if not myHum or not Noclip.bv or not Noclip.bv.Parent then return end
+
+        local moveDir = myHum.MoveDirection
         if moveDir.Magnitude > 0.1 then
-            local spd = math.min(Noclip.speed, 200)
-            Noclip.bv.Velocity = moveDir.Unit * spd + Vector3.new(0, 4, 0)
+            Noclip.bv.Velocity = moveDir.Unit * Noclip.speed
         else
             Noclip.bv.Velocity = Vector3.zero
         end
+
         if Noclip.platform and Noclip.platform.Parent then
-            Noclip.platform.CFrame = CFrame.new(hrp.Position)
+            Noclip.platform.CFrame = CFrame.new(myHrp.Position - Vector3.new(0, 3, 0))
         end
     end))
 
@@ -172,9 +180,8 @@ local function EnableHardNoclip()
         local c = LP.Character
         if not c then return end
         for _, p in ipairs(c:GetDescendants()) do
-            if p:IsA("BasePart") then
-                if p.CanCollide then p.CanCollide = false end
-                if not p.Massless then p.Massless = true end
+            if p:IsA("BasePart") and p.CanCollide then
+                p.CanCollide = false
             end
         end
     end))
@@ -220,13 +227,11 @@ function F.ToggleHardNoclip(state)
     end
 end
 
--- Fall Damage — усиленный (velocity clamp + state reset)
 local fallDamageBag = nil
 function F.ToggleFallDamage(state)
     if state then
         fallDamageBag = NewConnBag()
 
-        -- Ограничение вертикальной скорости — движок не считает большую высоту
         fallDamageBag:add(RunService.Stepped:Connect(function()
             local char = LP.Character
             if not char then return end
@@ -238,7 +243,6 @@ function F.ToggleFallDamage(state)
             end
         end))
 
-        -- Сброс Freefall когда он включается
         fallDamageBag:add(RunService.Heartbeat:Connect(function()
             local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
             if not hum then return end
@@ -249,7 +253,6 @@ function F.ToggleFallDamage(state)
             end
         end))
 
-        -- Хук на StateChanged — ловим Freefall сразу
         local function hookChar(char)
             task.wait(0.3)
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -686,7 +689,7 @@ local playerESP, botESP, boxESP, oreESP, rtESP = {}, {}, {}, {}, {}
 
 local hueClock = 0
 local function RainbowColor(offset)
-    hueClock += 0.005
+    hueClock += 0.0015
     if hueClock > 1 then hueClock -= 1 end
     return Color3.fromHSV((hueClock + (offset or 0)) % 1, 1, 1)
 end
@@ -764,7 +767,6 @@ local function FormatWeaponList(weapons)
     return table.concat(names, ", ")
 end
 
--- Highlight вместо Box для игроков
 local function CreateHighlight(plr)
     local hl = Instance.new("Highlight")
     hl.Name = "RustedHL_" .. plr.Name
@@ -847,30 +849,42 @@ local function ScanBots()
     end
 end
 
--- BOXES — точные имена (без "box", "supply", "storage" — они ловят декор)
 local BOX_KEYWORDS = {
     "smallcrate", "largecrate", "lootcrate", "loot_crate",
-    "woodencrate", "foodcrate", "medcrate", "medcrate",
-    "militarycrate", "supplydrop", "airdrop",
-    "basicchest", "goldchest", "largebox", "smallbox",
+    "woodencrate", "foodcrate", "medcrate", "medicalcrate",
+    "militarycrate", "supplycrate",
+    "supplydrop", "airdrop", "airdrops",
+    "basicchest", "goldchest", "largechest",
+    "storagebox", "lootbox", "medbox",
     "recycler", "furnace", "fridge",
 }
 
 local function IsBoxPart(inst)
     if not inst:IsA("BasePart") then return false end
-    local n = string.lower(inst.Name):gsub("[%s_%-]", "")
+    local n = string.lower(inst.Name):gsub("[%s_%-%.]", "")
+
     for _, k in ipairs(BOX_KEYWORDS) do
-        local kk = k:gsub("[%s_%-]", "")
+        local kk = string.lower(k):gsub("[%s_%-%.]", "")
         if n == kk then return true end
     end
+
     local parent = inst.Parent
     if parent and parent:IsA("Model") then
-        local pn = string.lower(parent.Name):gsub("[%s_%-]", "")
+        local pn = string.lower(parent.Name):gsub("[%s_%-%.]", "")
         for _, k in ipairs(BOX_KEYWORDS) do
-            local kk = k:gsub("[%s_%-]", "")
+            local kk = string.lower(k):gsub("[%s_%-%.]", "")
             if pn == kk then return true end
         end
     end
+
+    local prompt = inst:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then
+        local action = string.lower(prompt.ActionText or "")
+        if action:find("loot") or action:find("open") or action:find("collect") then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -920,17 +934,31 @@ end
 
 local ORES = {
     metal = {
-        keywords = {"metal", "metalore", "metal_ore", "ironore", "hqm", "highquality", "iron", "steel"},
+        keywords = {
+            "metalore", "metal_ore", "metalore1", "metalore2",
+            "ironore", "iron_ore",
+            "hqmnode", "hqm_node", "hqm_ore",
+            "highqualitynode",
+        },
+        exactNames = { "MetalOre", "Metal Ore", "IronOre" },
         color = Color3.fromRGB(180, 180, 180),
         label = "Metal",
     },
     sulfur = {
-        keywords = {"sulfur", "sulfurore", "sulfur_ore", "sulphur", "sulf"},
+        keywords = {
+            "sulfurore", "sulfur_ore", "sulfurnode", "sulfur_node",
+            "sulphur", "sulphurore",
+        },
+        exactNames = { "SulfurOre", "Sulfur Ore", "Sulphur" },
         color = Color3.fromRGB(255, 230, 60),
         label = "Sulfur",
     },
     stone = {
-        keywords = {"stone", "stoneore", "stone_ore", "rock", "rockore", "ore"},
+        keywords = {
+            "stoneore", "stone_ore", "stonenode", "stone_node",
+            "rocknode", "rock_node", "orespawn",
+        },
+        exactNames = { "StoneOre", "Stone Ore", "RockNode" },
         color = Color3.fromRGB(220, 60, 60),
         label = "Stone",
     },
@@ -939,12 +967,31 @@ F.ORES = ORES
 
 local function GetOreType(inst)
     if not inst:IsA("BasePart") and not inst:IsA("Model") then return nil end
-    local names = { string.lower(inst.Name) }
-    if inst.Parent then table.insert(names, string.lower(inst.Parent.Name)) end
-    for _, n in ipairs(names) do
+
+    local names = { inst.Name }
+    if inst.Parent then table.insert(names, inst.Parent.Name) end
+
+    for _, rawName in ipairs(names) do
+        local n = string.lower(rawName):gsub("[%s_%-%.]", "")
+
         for oreKey, data in pairs(ORES) do
+            for _, exact in ipairs(data.exactNames) do
+                local e = string.lower(exact):gsub("[%s_%-%.]", "")
+                if n == e then return oreKey end
+            end
             for _, kw in ipairs(data.keywords) do
-                if n:find(kw, 1, true) then return oreKey end
+                local k = string.lower(kw):gsub("[%s_%-%.]", "")
+                if n == k then return oreKey end
+            end
+            if inst:IsA("BasePart") then
+                local rt = inst:GetAttribute("ResourceType") or inst:GetAttribute("OreType") or inst:GetAttribute("Type")
+                if type(rt) == "string" then
+                    local rtN = string.lower(rt):gsub("[%s_%-%.]", "")
+                    for _, kw in ipairs(data.keywords) do
+                        local k = string.lower(kw):gsub("[%s_%-%.]", "")
+                        if rtN == k or rtN:find(k, 1, true) then return oreKey end
+                    end
+                end
             end
         end
     end
@@ -1007,7 +1054,6 @@ local function ScanOres()
     end
 end
 
--- RT — точные составные имена (без коротких слов)
 local RT_LOCATIONS = {
     { name = "Arctic Base",     keywords = {"arcticbase", "arctic_base", "arcticresearch"} },
     { name = "Bunker",          keywords = {"bunkerentrance", "bunker_entrance", "undergroundbunker"} },
@@ -1029,18 +1075,19 @@ local RT_COLOR = Color3.fromRGB(255, 100, 255)
 
 local function GetRTType(inst)
     if not inst:IsA("BasePart") and not inst:IsA("Model") then return nil end
-    local names = { string.lower(inst.Name):gsub("[%s_%-]", "") }
+    local names = { inst.Name }
     local p = inst.Parent
     local depth = 0
     while p and depth < 5 do
-        table.insert(names, string.lower(p.Name):gsub("[%s_%-]", ""))
+        table.insert(names, p.Name)
         p = p.Parent
         depth += 1
     end
     for _, rt in ipairs(RT_LOCATIONS) do
         for _, kw in ipairs(rt.keywords) do
-            local kk = kw:gsub("[%s_%-]", "")
-            for _, n in ipairs(names) do
+            local kk = string.lower(kw):gsub("[%s_%-%.]", "")
+            for _, rawName in ipairs(names) do
+                local n = string.lower(rawName):gsub("[%s_%-%.]", "")
                 if n == kk then return rt.name end
             end
         end
@@ -1182,7 +1229,7 @@ local function NewLookTracer(plr)
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 4
     adorn.Color3 = LookTracer.color
-    adorn.Thickness = LookTracer.thickness
+    adorn.Thickness = 0.5
     adorn.Transparency = LookTracer.transparency
     adorn.Parent = espFolder
     return adorn
@@ -1370,14 +1417,14 @@ end
 
 local AutoFarm = {
     active = false, mode = "walk", speed = 40, flyHeight = 5,
-    reachDist = 12, mineTime = 3, scanRange = 500,
+    reachDist = 12, mineTime = 3, scanRange = 300,
     targetTypes = { metal = true, sulfur = true, stone = true },
     bag = nil, currentTarget = nil, state = "idle",
     mineStart = 0, lastScan = 0, kills = 0,
     timeLimit = 0, killsLimit = 0, startTime = 0, stoppedBy = nil,
     playerDetect = false, playerRadius = 150, playerAction = "pause",
     playerPaused = false, playerPauseEnd = 0, playerStopDelay = 5,
-    lastPlayerCheck = 0, nearbyPlayers = {},
+    lastPlayerCheck = 0, nearbyPlayers = {}, moveStart = nil,
 }
 F.AutoFarm = AutoFarm
 
@@ -1573,31 +1620,49 @@ local function MoveToward(targetPos, dt)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
+
     local current = hrp.Position
     local diff = targetPos - current
-    local dist = Vector3.new(diff.X, 0, diff.Z).Magnitude
-    if dist < 1 then return end
-    if AutoFarm.mode == "walk" then
-        hum:MoveTo(targetPos)
-    elseif AutoFarm.mode == "fly" then
-        if not AutoFarm._bv then
-            AutoFarm._bv = Instance.new("BodyVelocity")
-            AutoFarm._bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-            AutoFarm._bv.Parent = hrp
-        end
-        local dir = diff.Unit
+    local horizDiff = Vector3.new(diff.X, 0, diff.Z)
+    local horizDist = horizDiff.Magnitude
+
+    if horizDist < 1 then return end
+
+    if not AutoFarm._bv then
+        AutoFarm._bv = Instance.new("BodyVelocity")
+        AutoFarm._bv.Name = "RustedFarmBV"
+        AutoFarm._bv.MaxForce = Vector3.new(1e5, 0, 1e5)
+        AutoFarm._bv.P = 2000
+        AutoFarm._bv.Parent = hrp
+    end
+
+    local speed = AutoFarm.speed
+    local dir = horizDiff.Unit
+
+    if AutoFarm.mode == "fly" then
         local targetY = targetPos.Y + AutoFarm.flyHeight
         local yDiff = targetY - current.Y
-        AutoFarm._bv.Velocity = Vector3.new(dir.X * AutoFarm.speed, yDiff * 2, dir.Z * AutoFarm.speed)
+        AutoFarm._bv.Velocity = Vector3.new(
+            dir.X * speed,
+            yDiff * 2,
+            dir.Z * speed
+        )
+    else
+        AutoFarm._bv.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
     end
+
+    hrp.CFrame = CFrame.new(current, Vector3.new(targetPos.X, current.Y, targetPos.Z))
 end
 
 local function StopMovement()
+    if AutoFarm._bv then
+        AutoFarm._bv:Destroy()
+        AutoFarm._bv = nil
+    end
     local char = LP.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then hum:MoveTo(char.HumanoidRootPart.Position) end
-    if AutoFarm._bv then AutoFarm._bv:Destroy(); AutoFarm._bv = nil end
 end
 
 local function TryMine(oreData)
@@ -1753,6 +1818,7 @@ local function StartAutoFarm()
             if target then
                 AutoFarm.currentTarget = target
                 AutoFarm.state = "moving"
+                AutoFarm.moveStart = tick()
             else
                 StopMovement()
             end
@@ -1767,6 +1833,15 @@ local function StartAutoFarm()
                 AutoFarm.state = "mining"
                 AutoFarm.mineStart = tick()
             else
+                AutoFarm.moveStart = AutoFarm.moveStart or tick()
+                if tick() - AutoFarm.moveStart > 15 then
+                    print("[Rusted AutoFarm] Move timeout, resetting target")
+                    AutoFarm.moveStart = nil
+                    AutoFarm.currentTarget = nil
+                    AutoFarm.state = "idle"
+                    StopMovement()
+                    return
+                end
                 MoveToward(t.part.Position, dt)
             end
         elseif AutoFarm.state == "mining" then
@@ -1774,8 +1849,10 @@ local function StartAutoFarm()
                 TryMine(AutoFarm.currentTarget)
                 AutoFarm.kills += 1
                 AutoFarm.currentTarget = nil
+                AutoFarm.moveStart = nil
                 AutoFarm.state = "idle"
                 StopMovement()
+                AutoFarm.lastScan = 0
             end
         end
     end))
@@ -1787,6 +1864,7 @@ local function StopAutoFarm()
     AutoFarm.state = "idle"
     AutoFarm.currentTarget = nil
     AutoFarm.playerPaused = false
+    AutoFarm.moveStart = nil
     CleanupHide()
 end
 
@@ -2103,27 +2181,52 @@ function F.DumpAllCodes()
 end
 
 local codeHookActive = false
+local codeHookCache = {}
+
+local function CheckRemoteName(remote)
+    local cached = codeHookCache[remote]
+    if cached ~= nil then return cached end
+    local n = string.lower(remote.Name)
+    local match = false
+    for _, kw in ipairs({"code", "pin", "pass", "key", "submit", "enter", "unlock"}) do
+        if n:find(kw, 1, true) then match = true; break end
+    end
+    codeHookCache[remote] = match
+    return match
+end
+
 function F.EnableCodeHook()
-    if codeHookActive then return end
+    if codeHookActive then
+        print("[Rusted CodeHook] already active")
+        return
+    end
     codeHookActive = true
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        if method == "FireServer" and self:IsA("RemoteEvent") then
-            local n = string.lower(self.Name)
-            if HasKeyword(n, {"code", "pin", "pass", "key", "submit", "enter", "unlock"}) then
-                for _, arg in ipairs(args) do
-                    if type(arg) == "string" and #arg <= 16 then
-                        print(string.format("[Rusted CodeHook] %s -> %s", self:GetFullName(), arg))
-                    elseif type(arg) == "number" and arg < 1e7 then
-                        print(string.format("[Rusted CodeHook] %s -> %d", self:GetFullName(), arg))
+        if not codeHookActive then return oldNamecall(self, ...) end
+        if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
+            if CheckRemoteName(self) then
+                local method = getnamecallmethod()
+                if method == "FireServer" or method == "InvokeServer" then
+                    local args = {...}
+                    for i, arg in ipairs(args) do
+                        if type(arg) == "string" and #arg <= 16 then
+                            print(string.format("[Rusted CodeHook] %s -> %s", self:GetFullName(), arg))
+                        elseif type(arg) == "number" and arg < 1e7 then
+                            print(string.format("[Rusted CodeHook] %s -> %d", self:GetFullName(), arg))
+                        end
                     end
                 end
             end
         end
         return oldNamecall(self, ...)
     end)
+end
+
+function F.DisableCodeHook()
+    codeHookActive = false
+    codeHookCache = {}
+    print("[Rusted CodeHook] disabled")
 end
 
 UserInputService.InputBegan:Connect(function(input, gpe)
@@ -2375,7 +2478,6 @@ RunService.RenderStepped:Connect(function(dt)
                         end
                         adorn.Adornee = head
                         adorn.CFrame = head.CFrame
-                        adorn.Length = LookTracer.length
                         adorn.Transparency = LookTracer.transparency
                     elseif LookTracer.tracers[plr] then
                         KillLookTracer(LookTracer.tracers[plr])
@@ -2399,7 +2501,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Bots — частота НЕ тронута
     if ESP.bots and frameCounter % 180 == 0 then ScanBots() end
     if ESP.bots and frameCounter % 10 == 0 then
         local camPos = Camera.CFrame.Position
@@ -2425,7 +2526,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Boxes — частота снижена (600 кадров ~10 сек)
     if ESP.boxes and frameCounter % 600 == 0 then ScanBoxes() end
     if ESP.boxes then
         for part, d in pairs(boxESP) do
@@ -2441,7 +2541,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Ores — частота снижена (600 кадров ~10 сек)
     if ESP.ores and frameCounter % 600 == 0 then ScanOres() end
     if ESP.ores then
         for part, d in pairs(oreESP) do
@@ -2457,7 +2556,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- RT — частота снижена (900 кадров ~15 сек)
     if ESP.rt and frameCounter % 900 == 0 then ScanRT() end
     if ESP.rt then
         for inst, d in pairs(rtESP) do
