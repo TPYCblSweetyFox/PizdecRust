@@ -1,7 +1,8 @@
 --[[ MAIN — функции, ESP, AutoFarm, вкладки ]]
 
 local BASE_URL = "https://raw.githubusercontent.com/TPYCblSweetyFox/PizdecRust/main/"
-local CORE = loadstring(game:HttpGet(BASE_URL .. "core.lua"))()
+local CACHE_BUST = "?v=" .. tostring(math.floor(tick() * 1000))
+local CORE = loadstring(game:HttpGet(BASE_URL .. "core.lua" .. CACHE_BUST))()
 
 local Players = CORE.Players
 local RunService = CORE.RunService
