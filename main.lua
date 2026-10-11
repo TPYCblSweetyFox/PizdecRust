@@ -252,4 +252,5 @@ CreateToggle(ProtectTab, "Звуки вообще", true, function(s) Sound.enab
 if Tabs["Главное"] then Tabs["Главное"].btn.MouseButton1Click:Fire() end
 
 print("[Rusted] Загружен успешно v3.")
+ 
 print("[Rusted] Хоткеи: RightShift - меню, L - лут, K - dump, F - freecam")
