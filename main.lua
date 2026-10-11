@@ -249,7 +249,16 @@ CreateToggle(ProtectTab, "Показывать имя", true, function(s) Watche
 CreateToggle(ProtectTab, "Звук", true, function(s) Watcher.sound = s end)
 CreateToggle(ProtectTab, "Звуки вообще", true, function(s) Sound.enabled = s end)
 
-if Tabs["Главное"] then Tabs["Главное"].btn.MouseButton1Click:Fire() end
+if Tabs["Main"] then
+    for _, t in pairs(Tabs) do
+        t.page.Visible = false
+        t.btn.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
+        t.btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    end
+    Tabs["Main"].page.Visible = true
+    Tabs["Main"].btn.BackgroundColor3 = Color3.fromRGB(138, 79, 255)
+    Tabs["Main"].btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
 
 print("[Rusted] Загружен успешно v3.")
  
