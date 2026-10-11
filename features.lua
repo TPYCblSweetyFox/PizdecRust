@@ -300,7 +300,7 @@ function F.ToggleFallDamage(state)
     end
 end
 
--- Wall Climb — медленный
+-- Wall Climb
 local WallClimb = { active = false, speed = 15, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
 F.WallClimb = WallClimb
 
@@ -351,7 +351,7 @@ function F.ToggleWallClimb(state)
     end
 end
 
--- Freecam — с ограничением горизонта
+-- Freecam — с исправленным горизонтом
 local Freecam = { active = false, pos = Vector3.zero, rot = CFrame.new(), speed = 60, hud = nil, conn = nil }
 F.Freecam = Freecam
 
@@ -390,13 +390,21 @@ function F.ToggleFreecam(state)
             local delta = UserInputService:GetMouseDelta()
             if delta.Magnitude > 0 then
                 local yaw = CFrame.Angles(0, math.rad(-delta.X * 0.35), 0)
-                local pitch = CFrame.Angles(math.rad(-delta.Y * 0.35), 0, 0)
-                Freecam.rot = Freecam.rot * yaw * pitch
-                local rx, ry, _ = Freecam.rot:ToEulerAnglesYXZ()
-                local MAX_PITCH = math.rad(85)
-                if rx > MAX_PITCH then rx = MAX_PITCH end
-                if rx < -MAX_PITCH then rx = -MAX_PITCH end
-                Freecam.rot = CFrame.new(Freecam.rot.Position) * CFrame.Angles(rx, ry, 0)
+                local pitchDelta = math.rad(-delta.Y * 0.35)
+
+                local newRot = Freecam.rot * yaw
+                local lookDir = newRot.LookVector
+                local currentPitch = math.asin(math.clamp(lookDir.Y, -1, 1))
+
+                local newPitch = currentPitch + pitchDelta
+                local MAX_PITCH = math.rad(89)
+                if newPitch > MAX_PITCH then
+                    pitchDelta = MAX_PITCH - currentPitch
+                elseif newPitch < -MAX_PITCH then
+                    pitchDelta = -MAX_PITCH - currentPitch
+                end
+
+                Freecam.rot = newRot * CFrame.Angles(pitchDelta, 0, 0)
             end
             local move = Vector3.zero
             if UserInputService.KeyboardEnabled then
@@ -434,38 +442,92 @@ function F.ToggleFreecam(state)
     end
 end
 
--- Freecam Follow — персонаж следует за камерой
+-- Freecam Follow — с фиксами
 local FreecamFollow = {
     enabled = false,
     key = Enum.KeyCode.T,
     tpInterval = 0.1,
     lastTP = 0,
     conn = nil,
+    savedGroundPos = nil,
 }
 F.FreecamFollow = FreecamFollow
+
+local function FindGroundBelow(pos)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { LP.Character }
+    params.IgnoreWater = true
+    local result = workspace:Raycast(pos, Vector3.new(0, -200, 0), params)
+    if result then
+        return result.Position + Vector3.new(0, 3, 0)
+    end
+    return nil
+end
+
+local function IsInventoryUIOpen()
+    local pg = LP:FindFirstChildOfClass("PlayerGui")
+    if not pg then return false end
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            local n = string.lower(gui.Name)
+            if n:find("inventory") or n:find("storage") or n:find("chest")
+            or n:find("container") or n:find("loot") or n:find("box")
+            or n:find("craft") or n:find("shop") or n:find("dialog") then
+                return true
+            end
+            for _, child in ipairs(gui:GetDescendants()) do
+                if child:IsA("TextLabel") and child.Visible and child.Text then
+                    local t = string.lower(child.Text)
+                    if t:find("deposit") or t:find("take all") or t:find("storage") then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
 
 local function StartFreecamFollow()
     if FreecamFollow.conn then return end
     FreecamFollow.conn = RunService.Heartbeat:Connect(function()
         if not FreecamFollow.enabled then return end
         if not Freecam.active then return end
+
         local char = LP.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+
+        if IsInventoryUIOpen() then
+            if FreecamFollow.savedGroundPos then
+                hrp.CFrame = CFrame.new(FreecamFollow.savedGroundPos)
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+            return
+        end
+
         local now = tick()
         if now - FreecamFollow.lastTP < FreecamFollow.tpInterval then return end
         FreecamFollow.lastTP = now
-        local targetPos = Freecam.pos - Vector3.new(0, 3, 0)
+
+        local camTarget = Freecam.pos - Vector3.new(0, 3, 0)
+        local groundPos = FindGroundBelow(camTarget)
+        if not groundPos then return end
+        if (camTarget - groundPos).Magnitude > 100 then return end
+
         for _, p in ipairs(char:GetDescendants()) do
             if p:IsA("BasePart") then p.CanCollide = false end
         end
-        hrp.CFrame = CFrame.new(targetPos)
+        hrp.CFrame = CFrame.new(groundPos)
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
         for _, p in ipairs(char:GetDescendants()) do
             if p:IsA("BasePart") then p.CanCollide = true end
         end
+
+        FreecamFollow.savedGroundPos = groundPos
     end)
 end
 
@@ -485,11 +547,27 @@ function F.ToggleFreecamFollow(state)
         print("[Rusted FreecamFollow] ON — press T to disable")
     else
         StopFreecamFollow()
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local groundPos = FindGroundBelow(hrp.Position)
+                if groundPos then
+                    hrp.CFrame = CFrame.new(groundPos)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    print("[Rusted FreecamFollow] landed at Y=" .. math.floor(groundPos.Y))
+                else
+                    print("[Rusted FreecamFollow] no ground")
+                end
+            end
+        end
+        FreecamFollow.savedGroundPos = nil
         print("[Rusted FreecamFollow] OFF")
     end
 end
 
--- Хоткеи F (freecam) и T (follow)
+-- Хоткеи F и T
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.F then F.ToggleFreecam(not Freecam.active) end
@@ -710,27 +788,39 @@ local silentHookActive = false
 local function EnableSilentHook()
     if silentHookActive then return end
     silentHookActive = true
+
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         if not Aim.silent then return oldNamecall(self, ...) end
         local method = getnamecallmethod()
+        if method ~= "Raycast" then return oldNamecall(self, ...) end
+        if self ~= workspace then return oldNamecall(self, ...) end
+        if not aimActive then return oldNamecall(self, ...) end
+
         local args = {...}
-        if aimActive and method == "FireServer" and self:IsA("RemoteEvent") then
-            local target = Aim.locked or FindTarget()
-            if target then
-                local part = GetAimPart(target.Character)
-                if part then
-                    for i, arg in ipairs(args) do
-                        if typeof(arg) == "Vector3" then args[i] = part.Position
-                        elseif typeof(arg) == "CFrame" then
-                            args[i] = CFrame.new(Camera.CFrame.Position, part.Position)
-                        end
-                    end
-                    return oldNamecall(self, table.unpack(args))
-                end
-            end
+        if #args < 2 then return oldNamecall(self, ...) end
+
+        local origin = args[1]
+        local direction = args[2]
+
+        if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then
+            return oldNamecall(self, ...)
         end
-        return oldNamecall(self, ...)
+
+        local camPos = Camera.CFrame.Position
+        if (origin - camPos).Magnitude > 5 then
+            return oldNamecall(self, ...)
+        end
+
+        local target = Aim.locked or FindTarget()
+        if not target then return oldNamecall(self, ...) end
+        local part = GetAimPart(target.Character)
+        if not part then return oldNamecall(self, ...) end
+
+        local toTarget = part.Position - origin
+        args[2] = toTarget.Unit * direction.Magnitude
+
+        return oldNamecall(self, table.unpack(args))
     end)
 end
 
