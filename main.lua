@@ -7,13 +7,11 @@ local CORE = loadstring(game:HttpGet(BASE_URL .. "core.lua" .. CACHE_BUST))()
 local F = loadstring(game:HttpGet(BASE_URL .. "features.lua" .. CACHE_BUST))(CORE)
 
 local Sound = CORE.Sound
-local Sound = CORE.Sound
 local CreateTab = CORE.CreateTab
 local CreateButton = CORE.CreateButton
 local CreateToggle = CORE.CreateToggle
 local CreateSlider = CORE.CreateSlider
 local Tabs = CORE.Tabs
-local ScreenGui = CORE.ScreenGui
 local LP = CORE.LP
 local Players = CORE.Players
 local TeleportService = CORE.TeleportService
