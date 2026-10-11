@@ -57,11 +57,21 @@ CreateSlider(VisualTab, "Radar Range", 50, 2000, 500, function(v) ESP.range = v 
 CreateToggle(VisualTab, "Night Vision", false, F.ToggleNightVision)
 CreateToggle(VisualTab, "Remove Grass & Leaves", false, F.ToggleEnvClean)
 
+local ModeESPBtn = CreateButton(VisualTab, "Player ESP Mode: Highlight", function() end)
+local espModes = {"highlight", "box", "both"}
+local espModeLabels = {highlight = "Highlight", box = "Box", both = "Both"}
+local espModeIdx = 1
+ModeESPBtn.MouseButton1Click:Connect(function()
+    espModeIdx = (espModeIdx % #espModes) + 1
+    ESP.mode = espModes[espModeIdx]
+    ModeESPBtn.Text = "Player ESP Mode: " .. espModeLabels[ESP.mode]
+end)
+
 local MoveTab = CreateTab("Movement")
 CreateToggle(MoveTab, "Infinite Jump", false, F.ToggleInfJump)
 CreateToggle(MoveTab, "Fly (WASD + Space/Ctrl)", false, F.ToggleFly)
 CreateToggle(MoveTab, "Wall Climb (Space near wall)", false, F.ToggleWallClimb)
-CreateSlider(MoveTab, "Wall Climb Speed", 10, 150, 45, function(v) WallClimb.speed = v end)
+CreateSlider(MoveTab, "Wall Climb Speed", 10, 150, 15, function(v) WallClimb.speed = v end)
 CreateToggle(MoveTab, "Speed Hack (WalkSpeed = 100)", false, F.ToggleWS)
 CreateToggle(MoveTab, "High Jump (JumpPower = 200)", false, function(s)
     F.SetJPValue(200)
@@ -71,6 +81,10 @@ CreateToggle(MoveTab, "Noclip (platform)", false, F.ToggleHardNoclip)
 CreateSlider(MoveTab, "Noclip Speed", 30, 200, 60, function(v) Noclip.speed = v end)
 CreateToggle(MoveTab, "Freecam (key F)", false, F.ToggleFreecam)
 CreateSlider(MoveTab, "Freecam Speed", 10, 300, 60, function(v) Freecam.speed = v end)
+CreateToggle(MoveTab, "Freecam Follow (key T)", false, F.ToggleFreecamFollow)
+CreateSlider(MoveTab, "Freecam Follow TP Interval (ms)", 50, 500, 100, function(v)
+    F.FreecamFollow.tpInterval = v / 1000
+end)
 CreateToggle(MoveTab, "No Fall Damage", false, F.ToggleFallDamage)
 CreateToggle(MoveTab, "Void Rescue (below -80)", true, F.ToggleVoidTP)
 CreateSlider(MoveTab, "Y Threshold", -500, -10, -80, function(v) VoidTP.threshold = v end)
@@ -266,5 +280,5 @@ if Tabs["Main"] then
     Tabs["Main"].btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
-print("[Rusted] Loaded v3.")
-print("[Rusted] Hotkeys: RightShift - menu, L - loot, K - dump, F - freecam")
+print("[Rusted] Loaded v4.")
+print("[Rusted] Hotkeys: RightShift - menu, L - loot, K - dump, F - freecam, T - freecam follow")
