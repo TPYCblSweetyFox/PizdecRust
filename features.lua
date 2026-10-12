@@ -1,4 +1,4 @@
---[[ FEATURES — все функции: движение, ESP, AutoFarm, Watcher, Wall Loot ]]
+--[[ FEATURES — все функции: движение, ESP, AutoFarm, Watcher ]]
 
 local CORE = ...
 local Players = CORE.Players
@@ -22,7 +22,7 @@ local F = {}
 --  MOVEMENT
 -- ============================================================
 
-local wsValue = 32
+local wsValue = 20
 local wsBag = nil
 function F.ToggleWS(state)
     if state then
@@ -68,7 +68,7 @@ function F.ToggleInfJump(state)
     end
 end
 
--- Fly — легальный (2 studs над землёй)
+-- Fly — безопасный (2 studs над землёй)
 local flyActive = false
 local flyBV, flyConn
 function F.ToggleFly(state)
@@ -104,9 +104,9 @@ function F.ToggleFly(state)
 
             local yDiff = targetY - hrp.Position.Y
             flyBV.Velocity = Vector3.new(
-                move.X * 60,
-                math.clamp(yDiff * 5, -30, 30),
-                move.Z * 60
+                move.X * 20,
+                math.clamp(yDiff * 5, -20, 20),
+                move.Z * 20
             )
         end)
 
@@ -120,7 +120,7 @@ function F.ToggleFly(state)
 end
 
 -- Noclip
-local Noclip = { active = false, speed = 60, platform = nil, bv = nil, conns = {} }
+local Noclip = { active = false, speed = 20, platform = nil, bv = nil, conns = {} }
 F.Noclip = Noclip
 
 local function CreateNoclipPlatform()
@@ -162,7 +162,7 @@ local function EnableHardNoclip()
 
     local bv = Instance.new("BodyVelocity")
     bv.Name = "RustedNoclipBV"
-    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    bv.MaxForce = Vector3.new(5e4, 5e4, 5e4)
     bv.Velocity = Vector3.zero
     bv.Parent = hrp
     Noclip.bv = bv
@@ -300,8 +300,8 @@ function F.ToggleFallDamage(state)
     end
 end
 
--- Wall Climb
-local WallClimb = { active = false, speed = 15, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
+-- Wall Climb — медленный
+local WallClimb = { active = false, speed = 8, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
 F.WallClimb = WallClimb
 
 local function WallClimbRay()
@@ -343,7 +343,7 @@ function F.ToggleWallClimb(state)
                 WallClimb.bv.Velocity = Vector3.zero
                 return
             end
-            WallClimb.bv.Velocity = Vector3.new(0, 15, 0) + (-normal * WallClimb.push)
+            WallClimb.bv.Velocity = Vector3.new(0, 8, 0) + (-normal * WallClimb.push)
         end)
     else
         if WallClimb.conn then WallClimb.conn:Disconnect(); WallClimb.conn = nil end
@@ -351,8 +351,8 @@ function F.ToggleWallClimb(state)
     end
 end
 
--- Freecam — с исправленным горизонтом
-local Freecam = { active = false, pos = Vector3.zero, rot = CFrame.new(), speed = 60, hud = nil, conn = nil }
+-- Freecam — с правильным горизонтом (yaw/pitch отдельно)
+local Freecam = { active = false, pos = Vector3.zero, yaw = 0, pitch = 0, rot = CFrame.new(), speed = 40, hud = nil, conn = nil }
 F.Freecam = Freecam
 
 function F.ToggleFreecam(state)
@@ -360,7 +360,10 @@ function F.ToggleFreecam(state)
     if state then
         local camCF = Camera.CFrame
         Freecam.pos = camCF.Position
-        Freecam.rot = camCF
+        local lookDir = camCF.LookVector
+        Freecam.yaw = math.atan2(-lookDir.X, -lookDir.Z)
+        Freecam.pitch = math.asin(math.clamp(lookDir.Y, -1, 1))
+
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
         if hum then hum.PlatformStand = true end
         local char = LP.Character
@@ -389,23 +392,16 @@ function F.ToggleFreecam(state)
             if not Freecam.active then return end
             local delta = UserInputService:GetMouseDelta()
             if delta.Magnitude > 0 then
-                local yaw = CFrame.Angles(0, math.rad(-delta.X * 0.35), 0)
-                local pitchDelta = math.rad(-delta.Y * 0.35)
-
-                local newRot = Freecam.rot * yaw
-                local lookDir = newRot.LookVector
-                local currentPitch = math.asin(math.clamp(lookDir.Y, -1, 1))
-
-                local newPitch = currentPitch + pitchDelta
-                local MAX_PITCH = math.rad(89)
-                if newPitch > MAX_PITCH then
-                    pitchDelta = MAX_PITCH - currentPitch
-                elseif newPitch < -MAX_PITCH then
-                    pitchDelta = -MAX_PITCH - currentPitch
-                end
-
-                Freecam.rot = newRot * CFrame.Angles(pitchDelta, 0, 0)
+                Freecam.yaw = Freecam.yaw - math.rad(delta.X * 0.4)
+                Freecam.pitch = math.clamp(
+                    Freecam.pitch - math.rad(delta.Y * 0.4),
+                    math.rad(-89),
+                    math.rad(89)
+                )
             end
+            local rot = CFrame.fromEulerAnglesYXZ(Freecam.pitch, Freecam.yaw, 0)
+            Freecam.rot = CFrame.new(Freecam.pos) * rot
+
             local move = Vector3.zero
             if UserInputService.KeyboardEnabled then
                 local cam = Freecam.rot
@@ -417,14 +413,17 @@ function F.ToggleFreecam(state)
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
             end
             local spd = Freecam.speed
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then spd *= 3 end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then spd *= 0.25 end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then spd *= 2 end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then spd *= 0.3 end
             if move.Magnitude > 0 then move = move.Unit end
             Freecam.pos += move * spd * dt
-            Camera.CFrame = CFrame.new(Freecam.pos) * (Freecam.rot - Freecam.rot.Position)
+
+            Camera.CFrame = CFrame.new(Freecam.pos) * rot
             if Freecam.hud then
                 Freecam.hud.Text = string.format(
-                    " FREECAM  X:%.0f Y:%.0f Z:%.0f", Freecam.pos.X, Freecam.pos.Y, Freecam.pos.Z)
+                    " FREECAM  X:%.0f Y:%.0f Z:%.0f  pitch:%.0f°",
+                    Freecam.pos.X, Freecam.pos.Y, Freecam.pos.Z,
+                    math.deg(Freecam.pitch))
             end
         end)
     else
@@ -442,14 +441,10 @@ function F.ToggleFreecam(state)
     end
 end
 
--- Freecam Follow — с фиксами
+-- Freecam Follow
 local FreecamFollow = {
-    enabled = false,
-    key = Enum.KeyCode.T,
-    tpInterval = 0.1,
-    lastTP = 0,
-    conn = nil,
-    savedGroundPos = nil,
+    enabled = false, key = Enum.KeyCode.T, tpInterval = 0.1,
+    lastTP = 0, conn = nil, savedGroundPos = nil,
 }
 F.FreecamFollow = FreecamFollow
 
@@ -459,9 +454,7 @@ local function FindGroundBelow(pos)
     params.FilterDescendantsInstances = { LP.Character }
     params.IgnoreWater = true
     local result = workspace:Raycast(pos, Vector3.new(0, -200, 0), params)
-    if result then
-        return result.Position + Vector3.new(0, 3, 0)
-    end
+    if result then return result.Position + Vector3.new(0, 3, 0) end
     return nil
 end
 
@@ -476,14 +469,6 @@ local function IsInventoryUIOpen()
             or n:find("craft") or n:find("shop") or n:find("dialog") then
                 return true
             end
-            for _, child in ipairs(gui:GetDescendants()) do
-                if child:IsA("TextLabel") and child.Visible and child.Text then
-                    local t = string.lower(child.Text)
-                    if t:find("deposit") or t:find("take all") or t:find("storage") then
-                        return true
-                    end
-                end
-            end
         end
     end
     return false
@@ -494,7 +479,6 @@ local function StartFreecamFollow()
     FreecamFollow.conn = RunService.Heartbeat:Connect(function()
         if not FreecamFollow.enabled then return end
         if not Freecam.active then return end
-
         local char = LP.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -526,7 +510,6 @@ local function StartFreecamFollow()
         for _, p in ipairs(char:GetDescendants()) do
             if p:IsA("BasePart") then p.CanCollide = true end
         end
-
         FreecamFollow.savedGroundPos = groundPos
     end)
 end
@@ -544,7 +527,7 @@ function F.ToggleFreecamFollow(state)
         if not Freecam.active then F.ToggleFreecam(true) end
         StartFreecamFollow()
         PlaySound("default")
-        print("[Rusted FreecamFollow] ON — press T to disable")
+        print("[Rusted FreecamFollow] ON")
     else
         StopFreecamFollow()
         local char = LP.Character
@@ -557,8 +540,6 @@ function F.ToggleFreecamFollow(state)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
                     print("[Rusted FreecamFollow] landed at Y=" .. math.floor(groundPos.Y))
-                else
-                    print("[Rusted FreecamFollow] no ground")
                 end
             end
         end
@@ -706,6 +687,21 @@ local Aim = {
 F.Aim = Aim
 
 local aimActive = false
+local lmbPressed = false
+local lmbPressedTime = 0
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        lmbPressed = true
+        lmbPressedTime = tick()
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        lmbPressed = false
+    end
+end)
 
 local FovGui = Instance.new("Frame")
 FovGui.Name = "FovCircle"
@@ -788,29 +784,26 @@ local silentHookActive = false
 local function EnableSilentHook()
     if silentHookActive then return end
     silentHookActive = true
-
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         if not Aim.silent then return oldNamecall(self, ...) end
+        if not lmbPressed then return oldNamecall(self, ...) end
+        if tick() - lmbPressedTime > 0.3 then return oldNamecall(self, ...) end
         local method = getnamecallmethod()
         if method ~= "Raycast" then return oldNamecall(self, ...) end
         if self ~= workspace then return oldNamecall(self, ...) end
-        if not aimActive then return oldNamecall(self, ...) end
 
         local args = {...}
         if #args < 2 then return oldNamecall(self, ...) end
-
         local origin = args[1]
         local direction = args[2]
-
         if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then
             return oldNamecall(self, ...)
         end
+        if direction.Magnitude < 50 then return oldNamecall(self, ...) end
 
         local camPos = Camera.CFrame.Position
-        if (origin - camPos).Magnitude > 5 then
-            return oldNamecall(self, ...)
-        end
+        if (origin - camPos).Magnitude > 20 then return oldNamecall(self, ...) end
 
         local target = Aim.locked or FindTarget()
         if not target then return oldNamecall(self, ...) end
@@ -819,7 +812,6 @@ local function EnableSilentHook()
 
         local toTarget = part.Position - origin
         args[2] = toTarget.Unit * direction.Magnitude
-
         return oldNamecall(self, table.unpack(args))
     end)
 end
@@ -861,10 +853,7 @@ end
 local ESP = {
     players = false, rainbow = false, bots = false,
     boxes = false, ores = false, rt = false, radar = false,
-    range = 500,
-    maxDist = 1200,
-    botMaxDist = 600,
-    botLimit = 30,
+    range = 500, maxDist = 1200, botMaxDist = 600, botLimit = 30,
     mode = "highlight",
 }
 F.ESP = ESP
@@ -1087,13 +1076,6 @@ local function IsBoxPart(inst)
             if pn == kk then return true end
         end
     end
-    local prompt = inst:FindFirstChildOfClass("ProximityPrompt")
-    if prompt then
-        local action = string.lower(prompt.ActionText or "")
-        if action:find("loot") or action:find("open") or action:find("collect") then
-            return true
-        end
-    end
     return false
 end
 
@@ -1165,6 +1147,23 @@ F.ORES = ORES
 
 local function GetOreType(inst)
     if not inst:IsA("BasePart") and not inst:IsA("Model") then return nil end
+
+    -- ИСКЛЮЧЕНИЯ: двери, стены, постройки
+    local fullName = ""
+    local p = inst
+    local depth = 0
+    while p and depth < 4 do
+        fullName = fullName .. " " .. string.lower(p.Name)
+        p = p.Parent
+        depth += 1
+    end
+    if fullName:find("door") or fullName:find("doorframe")
+    or fullName:find("wall") or fullName:find("building")
+    or fullName:find("structure") or fullName:find("gate")
+    or fullName:find("fence") or fullName:find("ladder") then
+        return nil
+    end
+
     local names = { inst.Name }
     if inst.Parent then table.insert(names, inst.Parent.Name) end
     for _, rawName in ipairs(names) do
@@ -1370,7 +1369,7 @@ local RadarCorner = Instance.new("UICorner")
 RadarCorner.CornerRadius = UDim.new(0, 8)
 RadarCorner.Parent = RadarGui
 local RadarStroke = Instance.new("UIStroke")
-RadarStroke.Color = Color3.fromRGB(80, 80, 100)
+RadarStroke.Color = Color3.fromRGB(138, 79, 255)
 RadarStroke.Parent = RadarGui
 local RadarTitle = Instance.new("TextLabel")
 RadarTitle.Size = UDim2.new(1, 0, 0, 18)
@@ -1607,27 +1606,109 @@ function F.ToggleEnvClean(state)
 end
 
 -- ============================================================
---  AUTO-FARM
+--  DANGER SCANNER
+-- ============================================================
+
+local DangerScanner = {
+    knownDangers = {},
+    knownDangersSet = {},
+    lastScanPos = Vector3.zero,
+    scanDistance = 30,
+    scanRadius = 200,
+    lastCleanup = 0,
+}
+
+local DAMAGE_KEYWORDS = {
+    "spike", "trap", "damage", "hurt", "kill", "lava", "fire",
+    "poison", "toxic", "barb", "razor", "saw", "blade",
+    "thorn", "cactus", "nettle", "turret", "mine", "radiation",
+    "barbs", "trapdoor", "bear",
+}
+
+function DangerScanner.Refresh()
+    local count = 0
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not DangerScanner.knownDangersSet[obj] then
+            local n = string.lower(obj.Name)
+            local dangerous = false
+            for _, kw in ipairs(DAMAGE_KEYWORDS) do
+                if n:find(kw, 1, true) then dangerous = true; break end
+            end
+            if not dangerous then
+                if obj:GetAttribute("Damage") or obj:GetAttribute("TrapType")
+                or obj:GetAttribute("Hurt") then
+                    dangerous = true
+                end
+            end
+            if dangerous then
+                table.insert(DangerScanner.knownDangers, obj)
+                DangerScanner.knownDangersSet[obj] = true
+                count += 1
+            end
+        end
+    end
+    if count > 0 then
+        print(string.format("[Rusted DangerScanner] +%d опасных объектов", count))
+    end
+end
+
+function DangerScanner.IsDangerous(pos, radius)
+    radius = radius or 15
+    for i = #DangerScanner.knownDangers, 1, -1 do
+        local obj = DangerScanner.knownDangers[i]
+        if not obj.Parent then
+            table.remove(DangerScanner.knownDangers, i)
+            DangerScanner.knownDangersSet[obj] = nil
+        elseif (obj.Position - pos).Magnitude <= radius then
+            return true
+        end
+    end
+    return false
+end
+
+function DangerScanner.Update()
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local distFromLastScan = (hrp.Position - DangerScanner.lastScanPos).Magnitude
+    if distFromLastScan >= DangerScanner.scanDistance then
+        DangerScanner.Refresh()
+        DangerScanner.lastScanPos = hrp.Position
+    end
+    if tick() - DangerScanner.lastCleanup > 30 then
+        DangerScanner.lastCleanup = tick()
+        for i = #DangerScanner.knownDangers, 1, -1 do
+            if not DangerScanner.knownDangers[i].Parent then
+                local obj = DangerScanner.knownDangers[i]
+                table.remove(DangerScanner.knownDangers, i)
+                DangerScanner.knownDangersSet[obj] = nil
+            end
+        end
+    end
+end
+
+-- ============================================================
+--  AUTO-FARM v2
 -- ============================================================
 
 local AutoFarm = {
-    active = false, mode = "walk", speed = 40, flyHeight = 5,
+    active = false, mode = "walk", speed = 25, flyHeight = 5,
     reachDist = 12, mineTime = 3, scanRange = 300,
     targetTypes = { metal = true, sulfur = true, stone = true },
-    bag = nil, currentTarget = nil, state = "idle",
-    mineStart = 0, lastScan = 0, kills = 0,
+    bag = nil, route = {}, routeIndex = 1,
+    lastRouteScan = 0, routeScanInterval = 10,
+    currentTarget = nil, state = "idle",
+    mineStart = 0, kills = 0,
     timeLimit = 0, killsLimit = 0, startTime = 0, stoppedBy = nil,
     playerDetect = false, playerRadius = 150, playerAction = "pause",
     playerPaused = false, playerPauseEnd = 0, playerStopDelay = 5,
     lastPlayerCheck = 0, nearbyPlayers = {}, moveStart = nil,
+    damageDetect = true,
 }
 F.AutoFarm = AutoFarm
 
-local HideUnderground = {
-    active = false, depthOffset = 20,
-    platform = nil, bv = nil, savedPos = nil,
-    state = "surface", diveStart = 0,
-}
+local HideUnderground = { active = false, depthOffset = 20, platform = nil, bv = nil, savedPos = nil, state = "surface", diveStart = 0 }
 F.HideUnderground = HideUnderground
 
 local function CreateHidePlatform()
@@ -1694,10 +1775,7 @@ local function SurfaceUp()
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    if HideUnderground.platform then
-        HideUnderground.platform:Destroy()
-        HideUnderground.platform = nil
-    end
+    if HideUnderground.platform then HideUnderground.platform:Destroy(); HideUnderground.platform = nil end
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = false end
     end
@@ -1729,10 +1807,7 @@ local function FinishSurface()
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = true end
     end
-    if HideUnderground.bv then
-        HideUnderground.bv:Destroy()
-        HideUnderground.bv = nil
-    end
+    if HideUnderground.bv then HideUnderground.bv:Destroy(); HideUnderground.bv = nil end
     HideUnderground.state = "surface"
     HideUnderground.savedPos = nil
 end
@@ -1772,21 +1847,20 @@ local function UpdateHideUnderground()
         if HideUnderground.platform then
             HideUnderground.platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
         end
-        if not playersNear and not AutoFarm.playerPaused then
-            SurfaceUp()
-        end
+        if not playersNear and not AutoFarm.playerPaused then SurfaceUp() end
     elseif HideUnderground.state == "surfacing" then
         if ReachedSurface() then FinishSurface() end
     end
 end
 
-local function FindNearestOre()
+local function BuildRoute()
     local char = LP.Character
-    if not char then return nil end
+    if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
+    if not hrp then return end
     local myPos = hrp.Position
-    local best, bestDist = nil, math.huge
+
+    local candidates = {}
     for _, inst in ipairs(workspace:GetDescendants()) do
         if inst:IsA("BasePart") or inst:IsA("Model") then
             local oreType = GetOreType(inst)
@@ -1796,17 +1870,40 @@ local function FindNearestOre()
                 elseif inst:IsA("Model") then
                     part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
                 end
-                if part then
+                if part and part.Parent then
                     local dist = (part.Position - myPos).Magnitude
-                    if dist < bestDist and dist <= AutoFarm.scanRange then
-                        bestDist = dist
-                        best = { inst = inst, part = part, type = oreType, dist = dist }
+                    if dist <= AutoFarm.scanRange then
+                        if not AutoFarm.damageDetect or not DangerScanner.IsDangerous(part.Position, 15) then
+                            table.insert(candidates, { inst = inst, part = part, type = oreType, dist = dist })
+                        end
                     end
                 end
             end
         end
     end
-    return best
+
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+    AutoFarm.route = candidates
+    AutoFarm.routeIndex = 1
+    AutoFarm.lastRouteScan = tick()
+    print(string.format("[Rusted AutoFarm] Маршрут: %d целей", #candidates))
+end
+
+local function GetNextTarget()
+    if tick() - AutoFarm.lastRouteScan > AutoFarm.routeScanInterval then
+        BuildRoute()
+    end
+    while AutoFarm.routeIndex <= #AutoFarm.route do
+        local target = AutoFarm.route[AutoFarm.routeIndex]
+        AutoFarm.routeIndex += 1
+        if target.part and target.part.Parent then return target end
+    end
+    BuildRoute()
+    if #AutoFarm.route > 0 then
+        AutoFarm.routeIndex = 2
+        return AutoFarm.route[1]
+    end
+    return nil
 end
 
 local function MoveToward(targetPos, dt)
@@ -1822,32 +1919,48 @@ local function MoveToward(targetPos, dt)
     local horizDist = horizDiff.Magnitude
     if horizDist < 1 then return end
 
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { char }
+    params.IgnoreWater = true
+    local ahead = horizDiff.Unit * 5
+    local hit = workspace:Raycast(current + Vector3.new(0, 2, 0), ahead, params)
+
+    local moveDir = horizDiff.Unit
+    if hit then
+        local leftDir = CFrame.Angles(0, math.rad(45), 0) * horizDiff.Unit
+        local rightDir = CFrame.Angles(0, math.rad(-45), 0) * horizDiff.Unit
+        local leftHit = workspace:Raycast(current + Vector3.new(0, 2, 0), leftDir * 5, params)
+        local rightHit = workspace:Raycast(current + Vector3.new(0, 2, 0), rightDir * 5, params)
+        if not leftHit then moveDir = leftDir
+        elseif not rightHit then moveDir = rightDir
+        else
+            if AutoFarm._bv then AutoFarm._bv.Velocity = Vector3.zero end
+            return
+        end
+    end
+
     if not AutoFarm._bv then
         AutoFarm._bv = Instance.new("BodyVelocity")
         AutoFarm._bv.Name = "RustedFarmBV"
-        AutoFarm._bv.MaxForce = Vector3.new(1e5, 0, 1e5)
+        AutoFarm._bv.MaxForce = Vector3.new(5e4, 0, 5e4)
         AutoFarm._bv.P = 2000
         AutoFarm._bv.Parent = hrp
     end
 
     local speed = AutoFarm.speed
-    local dir = horizDiff.Unit
-
     if AutoFarm.mode == "fly" then
         local targetY = targetPos.Y + AutoFarm.flyHeight
         local yDiff = targetY - current.Y
-        AutoFarm._bv.Velocity = Vector3.new(dir.X * speed, yDiff * 2, dir.Z * speed)
+        AutoFarm._bv.Velocity = Vector3.new(moveDir.X * speed, yDiff * 2, moveDir.Z * speed)
     else
-        AutoFarm._bv.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+        AutoFarm._bv.Velocity = Vector3.new(moveDir.X * speed, 0, moveDir.Z * speed)
     end
     hrp.CFrame = CFrame.new(current, Vector3.new(targetPos.X, current.Y, targetPos.Z))
 end
 
 local function StopMovement()
-    if AutoFarm._bv then
-        AutoFarm._bv:Destroy()
-        AutoFarm._bv = nil
-    end
+    if AutoFarm._bv then AutoFarm._bv:Destroy(); AutoFarm._bv = nil end
     local char = LP.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1920,7 +2033,7 @@ local function CheckPlayers()
     if hasPlayers then
         local closest = players[1]
         if not AutoFarm.playerPaused then
-            print(string.format("[Rusted AutoFarm] ! Player nearby: %s (%.0f studs, %d HP)",
+            print(string.format("[Rusted AutoFarm] ! Игрок рядом: %s (%.0f studs, %d HP)",
                 closest.plr.Name, closest.dist, math.floor(closest.hp)))
         end
         AutoFarm.playerPaused = true
@@ -1944,7 +2057,7 @@ local function CheckPlayers()
                 return true
             else
                 AutoFarm.playerPaused = false
-                print("[Rusted AutoFarm] OK Players left, resuming")
+                print("[Rusted AutoFarm] OK Игроки ушли, продолжаю")
             end
         end
     end
@@ -1958,7 +2071,7 @@ local function CheckLimits()
             AutoFarm.stoppedBy = "time"
             PlaySound("farm_complete")
             task.spawn(PlayBeepSequence)
-            print(string.format("[Rusted AutoFarm] OK Time up (%.1f min). Mined: %d", elapsed, AutoFarm.kills))
+            print(string.format("[Rusted AutoFarm] OK Время вышло (%.1f мин). Добыто: %d", elapsed, AutoFarm.kills))
             F.ToggleAutoFarm(false)
             return true
         end
@@ -1967,7 +2080,7 @@ local function CheckLimits()
         AutoFarm.stoppedBy = "kills"
         PlaySound("farm_complete")
         task.spawn(PlayBeepSequence)
-        print(string.format("[Rusted AutoFarm] OK Resource limit: %d. Stopped.", AutoFarm.kills))
+        print(string.format("[Rusted AutoFarm] OK Лимит ресурсов: %d. Остановлен.", AutoFarm.kills))
         F.ToggleAutoFarm(false)
         return true
     end
@@ -1979,15 +2092,20 @@ local function StartAutoFarm()
     AutoFarm.bag = NewConnBag()
     AutoFarm.startTime = tick()
     AutoFarm.stoppedBy = nil
+    AutoFarm.route = {}
+    AutoFarm.routeIndex = 1
+    AutoFarm.lastRouteScan = 0
+    BuildRoute()
+
     AutoFarm.bag:add(RunService.Heartbeat:Connect(function(dt)
         if not AutoFarm.active then return end
         local char = LP.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-        if tick() - AutoFarm.lastScan > 1 then
-            if CheckLimits() then return end
-        end
+
+        DangerScanner.Update()
+
         if tick() - AutoFarm.lastPlayerCheck > 0.5 then
             AutoFarm.lastPlayerCheck = tick()
             local playersNear = CheckPlayers()
@@ -1997,12 +2115,14 @@ local function StartAutoFarm()
                 return
             end
         end
+        if tick() - AutoFarm.lastScan > 1 then
+            AutoFarm.lastScan = tick()
+            if CheckLimits() then return end
+        end
         UpdateHideUnderground()
+
         if AutoFarm.state == "idle" then
-            local now = tick()
-            if now - AutoFarm.lastScan < 1 then return end
-            AutoFarm.lastScan = now
-            local target = FindNearestOre()
+            local target = GetNextTarget()
             if target then
                 AutoFarm.currentTarget = target
                 AutoFarm.state = "moving"
@@ -2023,7 +2143,7 @@ local function StartAutoFarm()
             else
                 AutoFarm.moveStart = AutoFarm.moveStart or tick()
                 if tick() - AutoFarm.moveStart > 15 then
-                    print("[Rusted AutoFarm] Move timeout, resetting target")
+                    print("[Rusted AutoFarm] Таймаут, следующая цель")
                     AutoFarm.moveStart = nil
                     AutoFarm.currentTarget = nil
                     AutoFarm.state = "idle"
@@ -2040,7 +2160,6 @@ local function StartAutoFarm()
                 AutoFarm.moveStart = nil
                 AutoFarm.state = "idle"
                 StopMovement()
-                AutoFarm.lastScan = 0
             end
         end
     end))
@@ -2053,6 +2172,7 @@ local function StopAutoFarm()
     AutoFarm.currentTarget = nil
     AutoFarm.playerPaused = false
     AutoFarm.moveStart = nil
+    AutoFarm.route = {}
     CleanupHide()
 end
 
@@ -2062,378 +2182,14 @@ function F.ToggleAutoFarm(state)
         AutoFarm.kills = 0
         AutoFarm.stoppedBy = nil
         StartAutoFarm()
-        print("[Rusted AutoFarm] Started. Mode: " .. AutoFarm.mode)
+        print("[Rusted AutoFarm] Запущен. Режим: " .. AutoFarm.mode)
     else
         StopAutoFarm()
         if not AutoFarm.stoppedBy then
-            print("[Rusted AutoFarm] Stopped manually. Mined: " .. AutoFarm.kills)
+            print("[Rusted AutoFarm] Остановлен. Добыто: " .. AutoFarm.kills)
         end
     end
 end
-
--- ============================================================
---  WALL LOOT
--- ============================================================
-
-local WallLoot = { active = false, maxDist = 500, autoLoot = false, lootDelay = 0.15, conn = nil, lastLoot = 0 }
-F.WallLoot = WallLoot
-
-local REMOTE_KEYWORDS = {"loot", "pickup", "grab", "take", "collect", "interact", "open", "chest", "crate", "container", "storage"}
-local CONTAINER_KEYWORDS = {"crate", "box", "chest", "loot", "supply", "barrel", "storage", "container", "cabinet", "locker", "safe", "fridge", "rt", "terminal", "computer", "recycler", "furnace"}
-
-local lootRemotes = nil
-local function FindLootRemotes()
-    if lootRemotes then return lootRemotes end
-    lootRemotes = {}
-    for _, obj in ipairs(game:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-            local n = string.lower(obj.Name)
-            for _, kw in ipairs(REMOTE_KEYWORDS) do
-                if n:find(kw, 1, true) then
-                    table.insert(lootRemotes, obj); break
-                end
-            end
-        end
-    end
-    return lootRemotes
-end
-
-local function FireLootRemotes(targetPart)
-    for _, remote in ipairs(FindLootRemotes()) do
-        pcall(function()
-            if remote:IsA("RemoteEvent") then remote:FireServer(targetPart)
-            else remote:InvokeServer(targetPart) end
-        end)
-    end
-end
-
-local function IsContainer(inst)
-    if not inst:IsA("BasePart") and not inst:IsA("Model") then return false end
-    local name = string.lower(inst.Name)
-    for _, kw in ipairs(CONTAINER_KEYWORDS) do
-        if name:find(kw, 1, true) then return true end
-    end
-    if inst:IsA("BasePart") then
-        if inst:FindFirstChildOfClass("ProximityPrompt") then return true end
-        if inst:FindFirstChildOfClass("ClickDetector") then return true end
-    end
-    return false
-end
-
-local function GetParts(inst)
-    if inst:IsA("BasePart") then return { inst } end
-    if inst:IsA("Model") then
-        local parts = {}
-        for _, p in ipairs(inst:GetDescendants()) do
-            if p:IsA("BasePart") then table.insert(parts, p) end
-        end
-        return parts
-    end
-    return {}
-end
-
-function F.LootEverything()
-    local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return 0 end
-    local myPos = myHRP.Position
-    local count = 0
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if IsContainer(inst) then
-            local parts = GetParts(inst)
-            local mainPart = parts[1]
-            if mainPart then
-                local dist = (mainPart.Position - myPos).Magnitude
-                if dist <= WallLoot.maxDist then
-                    local prompt = inst:FindFirstChildOfClass("ProximityPrompt")
-                    if prompt then
-                        pcall(function()
-                            prompt:InputHoldBegin()
-                            task.wait(prompt.HoldDuration or 0)
-                            prompt:InputHoldEnd()
-                        end)
-                        count += 1
-                    end
-                    local cd = inst:FindFirstChildOfClass("ClickDetector")
-                    if cd then
-                        pcall(function() fireclickdetector(cd) end)
-                        count += 1
-                    end
-                    FireLootRemotes(mainPart)
-                end
-            end
-        end
-    end
-    return count
-end
-
-local function StartWallLoot()
-    if WallLoot.conn then return end
-    WallLoot.conn = RunService.Heartbeat:Connect(function()
-        if not WallLoot.active or not WallLoot.autoLoot then return end
-        local now = tick()
-        if now - WallLoot.lastLoot < WallLoot.lootDelay then return end
-        WallLoot.lastLoot = now
-        pcall(F.LootEverything)
-    end)
-end
-
-function F.ToggleWallLoot(state)
-    WallLoot.active = state
-    if state then StartWallLoot()
-    else
-        if WallLoot.conn then WallLoot.conn:Disconnect(); WallLoot.conn = nil end
-        lootRemotes = nil
-    end
-end
-
-function F.ToggleAutoLoot(state) WallLoot.autoLoot = state end
-
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.L then
-        local n = F.LootEverything()
-        print("[Rusted] Collected: " .. tostring(n))
-    end
-end)
-
--- ============================================================
---  CODE LOCK
--- ============================================================
-
-local CodeLock = { active = false, showHud = true, radius = 300, conn = nil, found = {} }
-F.CodeLock = CodeLock
-
-local CODE_KEYWORDS = {"code", "password", "pass", "pin", "combination", "combo", "key"}
-local LOCK_KEYWORDS = {"codelock", "code_lock", "keypad", "door", "gate", "lock", "code"}
-
-local function HasKeyword(str, list)
-    local s = string.lower(str)
-    for _, k in ipairs(list) do
-        if s:find(k, 1, true) then return true end
-    end
-    return false
-end
-
-local function ExtractCode(inst)
-    for attrName, attrVal in pairs(inst:GetAttributes()) do
-        if HasKeyword(attrName, CODE_KEYWORDS) then
-            if type(attrVal) == "string" or type(attrVal) == "number" then
-                return tostring(attrVal), "attribute:" .. attrName
-            end
-        end
-    end
-    for _, child in ipairs(inst:GetDescendants()) do
-        if child:IsA("StringValue") or child:IsA("NumberValue") or child:IsA("IntValue") then
-            if HasKeyword(child.Name, CODE_KEYWORDS) then
-                return tostring(child.Value), "value:" .. child.Name
-            end
-        end
-    end
-    for _, child in ipairs(inst:GetDescendants()) do
-        if child:IsA("TextLabel") or child:IsA("TextBox") then
-            if HasKeyword(child.Name, CODE_KEYWORDS) and child.Text ~= "" then
-                return child.Text, "text:" .. child.Name
-            end
-        end
-    end
-    local parent = inst.Parent
-    if parent then
-        for _, gui in ipairs(parent:GetDescendants()) do
-            if gui:IsA("SurfaceGui") or gui:IsA("BillboardGui") then
-                for _, txt in ipairs(gui:GetDescendants()) do
-                    if txt:IsA("TextLabel") and txt.Text ~= "" then
-                        local t = txt.Text
-                        if #t <= 12 and t:match("^%d+$") then
-                            return t, "surfacegui:" .. txt.Name
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return nil, nil
-end
-
-local function IsCodeLock(inst)
-    if not inst:IsA("BasePart") and not inst:IsA("Model") then return false end
-    return HasKeyword(inst.Name, LOCK_KEYWORDS)
-end
-
-local function CreateCodeLabel(part, code)
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "RustedCodeLabel"
-    bb.Size = UDim2.new(0, 200, 0, 40)
-    bb.StudsOffset = Vector3.new(0, 4, 0)
-    bb.AlwaysOnTop = true
-    bb.MaxDistance = 500
-    bb.Adornee = part
-    bb.Parent = espFolder
-    local tl = Instance.new("TextLabel")
-    tl.Size = UDim2.new(1, 0, 1, 0)
-    tl.BackgroundTransparency = 0.3
-    tl.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    tl.TextColor3 = Color3.fromRGB(80, 255, 120)
-    tl.TextSize = 16
-    tl.Font = Enum.Font.Code
-    tl.TextStrokeTransparency = 0
-    tl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    tl.Text = "[CODE] " .. code
-    tl.Parent = bb
-    return bb
-end
-
-local function ScanCodeLocks()
-    local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return end
-    local myPos = myHRP.Position
-    local found = {}
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if IsCodeLock(inst) then
-            local mainPart
-            if inst:IsA("BasePart") then mainPart = inst
-            elseif inst:IsA("Model") then
-                mainPart = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-            end
-            if mainPart then
-                local dist = (mainPart.Position - myPos).Magnitude
-                if dist <= CodeLock.radius then
-                    local code, source = ExtractCode(inst)
-                    if code then
-                        found[inst] = true
-                        if not CodeLock.found[inst] then
-                            CodeLock.found[inst] = {
-                                part = mainPart, code = code, source = source,
-                                label = CodeLock.showHud and CreateCodeLabel(mainPart, code) or nil,
-                            }
-                            print(string.format("[Rusted CodeLock] %s -> %s (%s)",
-                                inst:GetFullName(), code, source))
-                        else
-                            local d = CodeLock.found[inst]
-                            if d.code ~= code and d.label then
-                                d.code = code
-                                d.label:FindFirstChildOfClass("TextLabel").Text = "[CODE] " .. code
-                            end
-                            d.part = mainPart
-                        end
-                    end
-                end
-            end
-        end
-    end
-    for inst, d in pairs(CodeLock.found) do
-        if not found[inst] or not inst.Parent then
-            if d.label then d.label:Destroy() end
-            CodeLock.found[inst] = nil
-        end
-    end
-end
-
-local function StartCodeLockScanner()
-    if CodeLock.conn then return end
-    local frame = 0
-    CodeLock.conn = RunService.Heartbeat:Connect(function()
-        if not CodeLock.active then return end
-        frame += 1
-        if frame % 90 == 0 then pcall(ScanCodeLocks) end
-    end)
-end
-
-function F.ToggleCodeLock(state)
-    CodeLock.active = state
-    if state then StartCodeLockScanner()
-    else
-        if CodeLock.conn then CodeLock.conn:Disconnect(); CodeLock.conn = nil end
-        for inst, d in pairs(CodeLock.found) do
-            if d.label then d.label:Destroy() end
-        end
-        CodeLock.found = {}
-    end
-end
-
-function F.DumpAllCodes()
-    print("[Rusted] === All Code Locks ===")
-    local count = 0
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if IsCodeLock(inst) then
-            local code, source = ExtractCode(inst)
-            if code then
-                count += 1
-                print(string.format("  [%d] %s -> %s  (%s)",
-                    count, inst:GetFullName(), code, source))
-            else
-                print(string.format("  [!] %s - code not found", inst:GetFullName()))
-            end
-        end
-    end
-    print(string.format("[Rusted] Total: %d", count))
-end
-
-local codeHookActive = false
-local codeHookCache = {}
-
-local function CheckRemoteName(remote)
-    local cached = codeHookCache[remote]
-    if cached ~= nil then return cached end
-    local n = string.lower(remote.Name)
-    local match = false
-    for _, kw in ipairs({"code", "pin", "pass", "key", "submit", "enter", "unlock"}) do
-        if n:find(kw, 1, true) then match = true; break end
-    end
-    codeHookCache[remote] = match
-    return match
-end
-
-local function IsCodeUIOpen()
-    local pg = LP:FindFirstChildOfClass("PlayerGui")
-    if not pg then return false end
-    for _, gui in ipairs(pg:GetChildren()) do
-        local n = string.lower(gui.Name)
-        if (n:find("code") or n:find("keypad") or n:find("password") or n:find("pin"))
-        and gui:IsA("ScreenGui") and gui.Enabled then
-            return true
-        end
-    end
-    return false
-end
-
-function F.EnableCodeHook()
-    if codeHookActive then
-        print("[Rusted CodeHook] already active")
-        return
-    end
-    codeHookActive = true
-    local oldNamecall
-    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        if not codeHookActive then return oldNamecall(self, ...) end
-        if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
-            if IsCodeUIOpen() and CheckRemoteName(self) then
-                local method = getnamecallmethod()
-                if method == "FireServer" or method == "InvokeServer" then
-                    local args = {...}
-                    for i, arg in ipairs(args) do
-                        if type(arg) == "string" and #arg <= 16 then
-                            print(string.format("[Rusted CodeHook] %s -> %s", self:GetFullName(), arg))
-                        elseif type(arg) == "number" and arg < 1e7 then
-                            print(string.format("[Rusted CodeHook] %s -> %d", self:GetFullName(), arg))
-                        end
-                    end
-                end
-            end
-        end
-        return oldNamecall(self, ...)
-    end)
-end
-
-function F.DisableCodeHook()
-    codeHookActive = false
-    codeHookCache = {}
-    print("[Rusted CodeHook] disabled")
-end
-
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.K then F.DumpAllCodes() end
-end)
 
 -- ============================================================
 --  WATCHER
@@ -2651,11 +2407,8 @@ RunService.RenderStepped:Connect(function(dt)
                             d.box.Adornee = hrp
                             d.box.Visible = true
                             d.box.Size = Vector3.new(4, 5, 4)
-                            if ESP.rainbow then
-                                d.box.Color3 = RainbowColor(d.hue)
-                            else
-                                d.box.Color3 = Color3.fromRGB(255, 80, 80)
-                            end
+                            if ESP.rainbow then d.box.Color3 = RainbowColor(d.hue)
+                            else d.box.Color3 = Color3.fromRGB(255, 80, 80) end
                         else
                             d.box.Visible = false
                         end
@@ -2671,8 +2424,7 @@ RunService.RenderStepped:Connect(function(dt)
                         local maxHp = math.floor(hum.MaxHealth)
                         local weapons = GetPlayerWeapons(plr)
                         local weaponText = FormatWeaponList(weapons)
-                        if d.visible then
-                            d.info.gui.Enabled = true
+                        if d.visible then                            d.info.gui.Enabled = true
                             d.info.label.Text = string.format("%s\nHP %d/%d | %dm | %s",
                                 plr.Name, hp, maxHp, distM, weaponText)
                             d.info.gui.Adornee = hrp
