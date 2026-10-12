@@ -89,60 +89,96 @@ function M.PlayBeepSequence()
     end
 end
 
+-- ========== ОПРЕДЕЛЕНИЕ МОБИЛЬНОГО ==========
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+M.IS_MOBILE = IS_MOBILE
+
 -- ========== GUI ==========
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "RustedHub"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999
+ScreenGui.IgnoreGuiInset = true
 protectgui(ScreenGui)
 if not ScreenGui.Parent then ScreenGui.Parent = getGuiParent() end
 M.ScreenGui = ScreenGui
 
+-- Размер меню — адаптивный под мобилу
+local MENU_W, MENU_H
+if IS_MOBILE then
+    MENU_W = math.min(500, workspace.CurrentCamera.ViewportSize.X * 0.95)
+    MENU_H = math.min(400, workspace.CurrentCamera.ViewportSize.Y * 0.7)
+else
+    MENU_W = 600
+    MENU_H = 420
+end
+
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 600, 0, 420)
-Main.Position = UDim2.new(0.5, -300, 0.5, -210)
-Main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Main.Name = "Main"
+Main.Size = UDim2.new(0, MENU_W, 0, MENU_H)
+Main.Position = UDim2.new(0.5, -MENU_W / 2, 0.5, -MENU_H / 2)
+Main.BackgroundColor3 = Color3.fromRGB(28, 20, 45)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = ScreenGui
+M.Main = Main
 
-local mc = Instance.new("UICorner")
-mc.CornerRadius = UDim.new(0, 10)
-mc.Parent = Main
-local ms = Instance.new("UIStroke")
-ms.Color = Color3.fromRGB(80, 80, 100)
-ms.Parent = Main
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = Main
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(138, 79, 255)
+MainStroke.Parent = Main
 
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
-TitleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(38, 26, 58)
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = Main
-local tbc = Instance.new("UICorner")
-tbc.CornerRadius = UDim.new(0, 10)
-tbc.Parent = TitleBar
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = TitleBar
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -30, 1, 0)
+Title.Size = UDim2.new(1, -60, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "Rusted Hub v2  |  RightShift — свернуть"
+Title.Text = "Rusted Hub  |  Menu"
 Title.TextColor3 = Color3.fromRGB(230, 230, 240)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TitleBar
 
+-- Кнопка сворачивания (крестик в углу)
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+MinimizeBtn.Position = UDim2.new(1, -40, 0, 5)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(138, 79, 255)
+MinimizeBtn.Text = "─"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 18
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.BorderSizePixel = 0
+MinimizeBtn.Parent = TitleBar
+
+local MinimizeCorner = Instance.new("UICorner")
+MinimizeCorner.CornerRadius = UDim.new(0, 6)
+MinimizeCorner.Parent = MinimizeBtn
+
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(0, 130, 1, -50)
 TabBar.Position = UDim2.new(0, 5, 0, 45)
-TabBar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+TabBar.BackgroundColor3 = Color3.fromRGB(32, 22, 50)
 TabBar.BorderSizePixel = 0
 TabBar.Parent = Main
-local tbarc = Instance.new("UICorner")
-tbarc.CornerRadius = UDim.new(0, 8)
-tbarc.Parent = TabBar
+
+local TabBarCorner = Instance.new("UICorner")
+TabBarCorner.CornerRadius = UDim.new(0, 8)
+TabBarCorner.Parent = TabBar
 
 local TabLayout = Instance.new("UIListLayout")
 TabLayout.Padding = UDim.new(0, 5)
@@ -158,26 +194,48 @@ TabPad.Parent = TabBar
 local ContentArea = Instance.new("Frame")
 ContentArea.Size = UDim2.new(1, -150, 1, -50)
 ContentArea.Position = UDim2.new(0, 140, 0, 45)
-ContentArea.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+ContentArea.BackgroundColor3 = Color3.fromRGB(32, 22, 50)
 ContentArea.BorderSizePixel = 0
 ContentArea.Parent = Main
-local cac = Instance.new("UICorner")
-cac.CornerRadius = UDim.new(0, 8)
-cac.Parent = ContentArea
-local cap = Instance.new("UIPadding")
-cap.PaddingTop = UDim.new(0, 10)
-cap.PaddingLeft = UDim.new(0, 10)
-cap.PaddingRight = UDim.new(0, 10)
-cap.PaddingBottom = UDim.new(0, 10)
-cap.Parent = ContentArea
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        Main.Visible = not Main.Visible
-    end
-end)
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 8)
+ContentCorner.Parent = ContentArea
 
+local ContentPad = Instance.new("UIPadding")
+ContentPad.PaddingTop = UDim.new(0, 10)
+ContentPad.PaddingLeft = UDim.new(0, 10)
+ContentPad.PaddingRight = UDim.new(0, 10)
+ContentPad.PaddingBottom = UDim.new(0, 10)
+ContentPad.Parent = ContentArea
+
+-- ========== ПЛАВАЮЩАЯ КНОПКА-КРУЖОК ==========
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "RustedToggle"
+ToggleButton.Size = UDim2.new(0, 55, 0, 55)
+ToggleButton.Position = UDim2.new(0, 15, 0.5, -27)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(138, 79, 255)
+ToggleButton.Text = "R"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 24
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Active = true
+ToggleButton.Visible = false
+ToggleButton.Parent = ScreenGui
+M.ToggleButton = ToggleButton
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleButton
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
+ToggleStroke.Thickness = 2
+ToggleStroke.Transparency = 0.5
+ToggleStroke.Parent = ToggleButton
+
+-- ========== ПЕРЕТАСКИВАНИЕ ОКНА ==========
 local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -199,6 +257,65 @@ UserInputService.InputEnded:Connect(function(input)
     or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
 end)
 
+-- ========== ПЕРЕТАСКИВАНИЕ КРУЖКА ==========
+local toggleDrag = false
+local toggleDragStart = nil
+local toggleStartPos = nil
+
+ToggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        toggleDrag = false
+        toggleDragStart = input.Position
+        toggleStartPos = ToggleButton.Position
+    end
+end)
+
+ToggleButton.InputChanged:Connect(function(input)
+    if toggleDragStart and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - toggleDragStart
+        if delta.Magnitude > 5 then
+            toggleDrag = true
+            ToggleButton.Position = UDim2.new(
+                toggleStartPos.X.Scale, toggleStartPos.X.Offset + delta.X,
+                toggleStartPos.Y.Scale, toggleStartPos.Y.Offset + delta.Y)
+        end
+    end
+end)
+
+ToggleButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        -- Если не перетаскивали — это клик
+        if not toggleDrag then
+            Main.Visible = true
+            ToggleButton.Visible = false
+        end
+        toggleDragStart = nil
+    end
+end)
+
+-- Кнопка сворачивания
+MinimizeBtn.MouseButton1Click:Connect(function()
+    Main.Visible = false
+    ToggleButton.Visible = true
+end)
+
+-- Хоткей RightShift (ПК)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        if Main.Visible then
+            Main.Visible = false
+            ToggleButton.Visible = true
+        else
+            Main.Visible = true
+            ToggleButton.Visible = false
+        end
+    end
+end)
+
 -- ========== КОМПОНЕНТЫ UI ==========
 local Tabs = {}
 M.Tabs = Tabs
@@ -206,7 +323,7 @@ M.Tabs = Tabs
 function M.CreateTab(name)
     local tabBtn = Instance.new("TextButton")
     tabBtn.Size = UDim2.new(1, 0, 0, 30)
-    tabBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    tabBtn.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
     tabBtn.Text = name
     tabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
     tabBtn.TextSize = 13
@@ -221,7 +338,7 @@ function M.CreateTab(name)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
     page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
+    page.ScrollBarImageColor3 = Color3.fromRGB(138, 79, 255)
     page.CanvasSize = UDim2.new(0, 0, 0, 0)
     page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     page.Visible = false
@@ -237,11 +354,11 @@ function M.CreateTab(name)
     tabBtn.MouseButton1Click:Connect(function()
         for _, t in pairs(Tabs) do
             t.page.Visible = false
-            t.btn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+            t.btn.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
             t.btn.TextColor3 = Color3.fromRGB(200, 200, 210)
         end
         page.Visible = true
-        tabBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 180)
+        tabBtn.BackgroundColor3 = Color3.fromRGB(138, 79, 255)
         tabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     end)
     return page
@@ -250,7 +367,7 @@ end
 function M.CreateButton(parent, text, callback)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -8, 0, 32)
-    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
     btn.Text = text
     btn.TextColor3 = Color3.fromRGB(220, 220, 230)
     btn.TextSize = 13
@@ -261,12 +378,16 @@ function M.CreateButton(parent, text, callback)
     c.CornerRadius = UDim.new(0, 6); c.Parent = btn
 
     btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {
-            BackgroundColor3 = Color3.fromRGB(60, 60, 75)}):Play()
+        if not IS_MOBILE then
+            TweenService:Create(btn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(65, 45, 95)}):Play()
+        end
     end)
     btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+        if not IS_MOBILE then
+            TweenService:Create(btn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(45, 32, 68)}):Play()
+        end
     end)
     btn.MouseButton1Click:Connect(function()
         local ok, err = pcall(callback)
@@ -279,7 +400,7 @@ function M.CreateToggle(parent, text, default, callback)
     local state = default or false
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -8, 0, 32)
-    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
     btn.Text = text .. "  [" .. (state and "ON" or "OFF") .. "]"
     btn.TextColor3 = state and Color3.fromRGB(100, 200, 120) or Color3.fromRGB(180, 180, 190)
     btn.TextSize = 12
@@ -302,7 +423,7 @@ end
 function M.CreateSlider(parent, text, min, max, default, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -8, 0, 50)
-    frame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    frame.BackgroundColor3 = Color3.fromRGB(45, 32, 68)
     frame.BorderSizePixel = 0
     frame.Parent = parent
     local fc = Instance.new("UICorner")
@@ -320,9 +441,9 @@ function M.CreateSlider(parent, text, min, max, default, callback)
     label.Parent = frame
 
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, -20, 0, 6)
+    bar.Size = UDim2.new(1, -20, 0, 8)
     bar.Position = UDim2.new(0, 10, 0, 32)
-    bar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    bar.BackgroundColor3 = Color3.fromRGB(30, 20, 48)
     bar.BorderSizePixel = 0
     bar.Parent = frame
     local bc = Instance.new("UICorner")
@@ -330,7 +451,7 @@ function M.CreateSlider(parent, text, min, max, default, callback)
 
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(80, 140, 220)
+    fill.BackgroundColor3 = Color3.fromRGB(138, 79, 255)
     fill.BorderSizePixel = 0
     fill.Parent = bar
     local fillc = Instance.new("UICorner")
@@ -361,6 +482,7 @@ function M.CreateSlider(parent, text, min, max, default, callback)
     end)
 end
 
+-- ESP folder
 local espFolder = Instance.new("Folder")
 espFolder.Name = "RustedESP"
 espFolder.Parent = ScreenGui
