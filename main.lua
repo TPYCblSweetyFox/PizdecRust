@@ -18,8 +18,6 @@ local TeleportService = CORE.TeleportService
 local ESP = F.ESP
 local Aim = F.Aim
 local AutoFarm = F.AutoFarm
-local WallLoot = F.WallLoot
-local CodeLock = F.CodeLock
 local Watcher = F.Watcher
 local LookTracer = F.LookTracer
 local Noclip = F.Noclip
@@ -37,9 +35,15 @@ local function Rejoin()
     TeleportService:Teleport(game.PlaceId, LP)
 end
 
+-- ============================================================
+--  MAIN
+-- ============================================================
 local MainTab = CreateTab("Main")
 CreateButton(MainTab, "Rejoin Server", Rejoin)
 
+-- ============================================================
+--  VISUAL
+-- ============================================================
 local VisualTab = CreateTab("Visual")
 CreateToggle(VisualTab, "Player ESP", false, F.TogglePlayerESP)
 CreateToggle(VisualTab, "Rainbow ESP", false, F.ToggleRainbow)
@@ -67,20 +71,23 @@ ModeESPBtn.MouseButton1Click:Connect(function()
     ModeESPBtn.Text = "Player ESP Mode: " .. espModeLabels[ESP.mode]
 end)
 
+-- ============================================================
+--  MOVEMENT
+-- ============================================================
 local MoveTab = CreateTab("Movement")
 CreateToggle(MoveTab, "Infinite Jump", false, F.ToggleInfJump)
 CreateToggle(MoveTab, "Fly (WASD + Space/Ctrl)", false, F.ToggleFly)
 CreateToggle(MoveTab, "Wall Climb (Space near wall)", false, F.ToggleWallClimb)
-CreateSlider(MoveTab, "Wall Climb Speed", 10, 150, 15, function(v) WallClimb.speed = v end)
-CreateToggle(MoveTab, "Speed Hack (WalkSpeed = 100)", false, F.ToggleWS)
+CreateSlider(MoveTab, "Wall Climb Speed", 3, 30, 8, function(v) WallClimb.speed = v end)
+CreateToggle(MoveTab, "Speed Hack (WalkSpeed = 20)", false, F.ToggleWS)
 CreateToggle(MoveTab, "High Jump (JumpPower = 200)", false, function(s)
     F.SetJPValue(200)
     F.ToggleJP(s)
 end)
 CreateToggle(MoveTab, "Noclip (platform)", false, F.ToggleHardNoclip)
-CreateSlider(MoveTab, "Noclip Speed", 30, 200, 60, function(v) Noclip.speed = v end)
+CreateSlider(MoveTab, "Noclip Speed", 5, 60, 20, function(v) Noclip.speed = v end)
 CreateToggle(MoveTab, "Freecam (key F)", false, F.ToggleFreecam)
-CreateSlider(MoveTab, "Freecam Speed", 10, 300, 60, function(v) Freecam.speed = v end)
+CreateSlider(MoveTab, "Freecam Speed", 10, 300, 40, function(v) Freecam.speed = v end)
 CreateToggle(MoveTab, "Freecam Follow (key T)", false, F.ToggleFreecamFollow)
 CreateSlider(MoveTab, "Freecam Follow TP Interval (ms)", 50, 500, 100, function(v)
     F.FreecamFollow.tpInterval = v / 1000
@@ -91,10 +98,14 @@ CreateSlider(MoveTab, "Y Threshold", -500, -10, -80, function(v) VoidTP.threshol
 CreateSlider(MoveTab, "Return Y", 0, 200, 5, function(v) VoidTP.targetY = v end)
 CreateToggle(MoveTab, "Teleport to SpawnLocation", false, function(s) VoidTP.useSpawn = s end)
 
+-- ============================================================
+--  AIM
+-- ============================================================
 local AimTab = CreateTab("Aim")
 CreateToggle(AimTab, "Silent Aim (RMB)", false, F.ToggleSilentAim)
 CreateToggle(AimTab, "Aimlock (RMB)", false, F.ToggleAimlock)
 CreateToggle(AimTab, "Show FOV Circle", false, F.ToggleFovVisible)
+
 local PartBtn = CreateButton(AimTab, "Target: Head", function() end)
 local partIndex = 1
 local partsList = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
@@ -103,11 +114,15 @@ PartBtn.MouseButton1Click:Connect(function()
     Aim.part = partsList[partIndex]
     PartBtn.Text = "Target: " .. Aim.part
 end)
+
 CreateSlider(AimTab, "FOV", 30, 500, 150, function(v) Aim.fov = v end)
 CreateSlider(AimTab, "Aimlock Smoothness", 0, 95, 25, function(v) Aim.smooth = v / 100 end)
 CreateToggle(AimTab, "Hold Mode", true, function(s) Aim.holdKey = s end)
 CreateToggle(AimTab, "Visibility Check", true, function(s) Aim.visible = s end)
 
+-- ============================================================
+--  PLAYERS
+-- ============================================================
 local PlayerTab = CreateTab("Players")
 local massFrame = Instance.new("Frame")
 massFrame.Size = UDim2.new(1, -8, 0, 32)
@@ -152,6 +167,9 @@ RefreshPlayerList()
 Players.PlayerAdded:Connect(function() task.wait(0.5) RefreshPlayerList() end)
 Players.PlayerRemoving:Connect(function() task.wait(0.5) RefreshPlayerList() end)
 
+-- ============================================================
+--  FARM
+-- ============================================================
 local FarmTab = CreateTab("Farm")
 CreateToggle(FarmTab, "Auto Farm (ores)", false, F.ToggleAutoFarm)
 
@@ -165,7 +183,7 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. modeLabels[AutoFarm.mode]
 end)
 
-CreateSlider(FarmTab, "Speed", 10, 200, 40, function(v) AutoFarm.speed = v end)
+CreateSlider(FarmTab, "Speed", 10, 100, 25, function(v) AutoFarm.speed = v end)
 CreateSlider(FarmTab, "Fly Height", 2, 50, 5, function(v) AutoFarm.flyHeight = v end)
 CreateSlider(FarmTab, "Mine Distance", 5, 30, 12, function(v) AutoFarm.reachDist = v end)
 CreateSlider(FarmTab, "Mine Time", 1, 15, 3, function(v) AutoFarm.mineTime = v end)
@@ -173,6 +191,7 @@ CreateSlider(FarmTab, "Search Radius", 100, 2000, 300, function(v) AutoFarm.scan
 CreateToggle(FarmTab, "Mine: Metal", true, function(s) AutoFarm.targetTypes.metal = s end)
 CreateToggle(FarmTab, "Mine: Sulfur", true, function(s) AutoFarm.targetTypes.sulfur = s end)
 CreateToggle(FarmTab, "Mine: Stone", true, function(s) AutoFarm.targetTypes.stone = s end)
+CreateToggle(FarmTab, "Danger Detection (spikes/traps)", true, function(s) AutoFarm.damageDetect = s end)
 
 local timeLimitBtn = CreateButton(FarmTab, "Time Limit: OFF", function() end)
 local timeOptions = {0, 5, 10, 15, 30, 60}
@@ -226,39 +245,23 @@ CreateSlider(FarmTab, "Detector Radius", 30, 500, 150, function(v) AutoFarm.play
 CreateSlider(FarmTab, "Pause After Leave", 1, 60, 5, function(v) AutoFarm.playerStopDelay = v end)
 CreateToggle(FarmTab, "Hide Underground", false, F.ToggleHideUnderground)
 
-CreateButton(FarmTab, "Farm Status", function()
+CreateButton(FarmTab, "Farm Status (console)", function()
     local elapsed = AutoFarm.active and ((tick() - AutoFarm.startTime) / 60) or 0
     print("=== AutoFarm Status ===")
     print("Active:", AutoFarm.active)
     print("State:", AutoFarm.state)
     print("Mined:", AutoFarm.kills)
     print("Elapsed:", string.format("%.1f min", elapsed))
+    print("Route length:", #AutoFarm.route)
+    print("Route index:", AutoFarm.routeIndex)
     print("Players nearby:", #AutoFarm.nearbyPlayers)
+    print("Dangers known:", #F.DangerScanner.knownDangers)
     print("Dive state:", HideUnderground.state)
 end)
 
-local LootTab = CreateTab("Loot")
-CreateToggle(LootTab, "Wall Loot", false, F.ToggleWallLoot)
-CreateToggle(LootTab, "Auto Mode", false, F.ToggleAutoLoot)
-CreateSlider(LootTab, "Loot Distance", 50, 2000, 500, function(v) WallLoot.maxDist = v end)
-CreateSlider(LootTab, "Loot Delay (ms)", 50, 1000, 150, function(v) WallLoot.lootDelay = v / 1000 end)
-CreateButton(LootTab, "Loot All Now (key L)", function()
-    local n = F.LootEverything()
-    print("[Rusted] Collected: " .. tostring(n))
-end)
-
-local CodesTab = CreateTab("Codes")
-CreateToggle(CodesTab, "Show Codes", false, F.ToggleCodeLock)
-CreateSlider(CodesTab, "Scan Radius", 50, 2000, 300, function(v) CodeLock.radius = v end)
-CreateToggle(CodesTab, "Code Input Hook", false, function(s)
-    if s then
-        F.EnableCodeHook()
-    else
-        if F.DisableCodeHook then F.DisableCodeHook() end
-    end
-end)
-CreateButton(CodesTab, "Dump Codes (key K)", F.DumpAllCodes)
-
+-- ============================================================
+--  PROTECTION
+-- ============================================================
 local ProtectTab = CreateTab("Protection")
 CreateToggle(ProtectTab, "Look Detector (red alert)", false, F.ToggleWatcher)
 CreateSlider(ProtectTab, "Look Precision", 50, 95, 70, function(v) Watcher.minDot = v / 100 end)
@@ -269,6 +272,7 @@ CreateToggle(ProtectTab, "Show Name", true, function(s) Watcher.showName = s end
 CreateToggle(ProtectTab, "Sound Alert", true, function(s) Watcher.sound = s end)
 CreateToggle(ProtectTab, "All Sounds", true, function(s) Sound.enabled = s end)
 
+-- ============================================================
 if Tabs["Main"] then
     for _, t in pairs(Tabs) do
         t.page.Visible = false
@@ -280,5 +284,5 @@ if Tabs["Main"] then
     Tabs["Main"].btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
-print("[Rusted] Loaded v4.")
-print("[Rusted] Hotkeys: RightShift - menu, L - loot, K - dump, F - freecam, T - freecam follow")
+print("[Rusted] Loaded v5.")
+print("[Rusted] Hotkeys: RightShift - menu, F - freecam, T - freecam follow")
