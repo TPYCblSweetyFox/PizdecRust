@@ -15,6 +15,7 @@ local PlaySound = CORE.PlaySound
 local PlayBeepSequence = CORE.PlayBeepSequence
 local NewBox = CORE.NewBox
 local KillBox = CORE.KillBox
+local IS_MOBILE = CORE.IS_MOBILE
 
 local F = {}
 
@@ -22,7 +23,7 @@ local F = {}
 --  MOVEMENT
 -- ============================================================
 
-local wsValue = 20
+local wsValue = 18
 local wsBag = nil
 function F.ToggleWS(state)
     if state then
@@ -68,7 +69,7 @@ function F.ToggleInfJump(state)
     end
 end
 
--- Fly — безопасный (2 studs над землёй)
+-- Fly — только горизонтальный (вертикаль режется сервером)
 local flyActive = false
 local flyBV, flyConn
 function F.ToggleFly(state)
@@ -80,47 +81,38 @@ function F.ToggleFly(state)
         if not hum then return end
 
         flyBV = Instance.new("BodyVelocity")
-        flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+        flyBV.MaxForce = Vector3.new(5e4, 0, 5e4)
         flyBV.Velocity = Vector3.zero
         flyBV.Parent = hrp
 
         flyConn = RunService.RenderStepped:Connect(function()
             if not flyActive or not hrp or not hrp.Parent then return end
-            local params = RaycastParams.new()
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            params.FilterDescendantsInstances = { LP.Character }
-            params.IgnoreWater = true
-            local result = workspace:Raycast(hrp.Position, Vector3.new(0, -50, 0), params)
-            local groundY = result and result.Position.Y or (hrp.Position.Y - 5)
-            local targetY = groundY + 2
 
             local move = Vector3.zero
             local cam = Camera.CFrame
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.RightVector end
-            if move.Magnitude > 0 then move = move.Unit end
+            -- На мобиле — движение только через AutoFarm или позицию камеры
+            if UserInputService.KeyboardEnabled then
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.RightVector end
+            end
 
-            local yDiff = targetY - hrp.Position.Y
-            flyBV.Velocity = Vector3.new(
-                move.X * 20,
-                math.clamp(yDiff * 5, -20, 20),
-                move.Z * 20
-            )
+            -- Убираем вертикальную составляющую (сервер режет)
+            local horiz = Vector3.new(move.X, 0, move.Z)
+            if horiz.Magnitude > 0 then horiz = horiz.Unit end
+
+            -- Скорость 15 — безопасно
+            flyBV.Velocity = Vector3.new(horiz.X * 15, 0, horiz.Z * 15)
         end)
-
-        if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false) end
     else
         if flyConn then flyConn:Disconnect(); flyConn = nil end
         if flyBV then flyBV:Destroy(); flyBV = nil end
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true) end
     end
 end
 
--- Noclip
-local Noclip = { active = false, speed = 20, platform = nil, bv = nil, conns = {} }
+-- Noclip — только горизонтальный
+local Noclip = { active = false, speed = 15, platform = nil, bv = nil, conns = {} }
 F.Noclip = Noclip
 
 local function CreateNoclipPlatform()
@@ -132,7 +124,7 @@ local function CreateNoclipPlatform()
     p.CanQuery = false
     p.CanTouch = false
     p.Anchored = false
-    p.Massless = false
+    p.Massless = true
     p.Parent = workspace
     return p
 end
@@ -162,7 +154,7 @@ local function EnableHardNoclip()
 
     local bv = Instance.new("BodyVelocity")
     bv.Name = "RustedNoclipBV"
-    bv.MaxForce = Vector3.new(5e4, 5e4, 5e4)
+    bv.MaxForce = Vector3.new(5e4, 0, 5e4)
     bv.Velocity = Vector3.zero
     bv.Parent = hrp
     Noclip.bv = bv
@@ -178,7 +170,9 @@ local function EnableHardNoclip()
 
         local moveDir = myHum.MoveDirection
         if moveDir.Magnitude > 0.1 then
-            Noclip.bv.Velocity = moveDir.Unit * Noclip.speed
+            -- Только XZ движение, без Y (сервер режет Y)
+            local horiz = Vector3.new(moveDir.X, 0, moveDir.Z).Unit
+            Noclip.bv.Velocity = horiz * Noclip.speed
         else
             Noclip.bv.Velocity = Vector3.zero
         end
@@ -238,35 +232,17 @@ function F.ToggleHardNoclip(state)
     end
 end
 
--- Fall Damage — micro-hop
+-- Fall Damage
 local fallDamageBag = nil
 function F.ToggleFallDamage(state)
     if state then
         fallDamageBag = NewConnBag()
-        local HOP_HEIGHT = 2.5
-        local MIN_FALL_SPEED = -45
-        local GROUND_CHECK = 8
-
         fallDamageBag:add(RunService.Heartbeat:Connect(function()
             local char = LP.Character
             if not char then return end
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
             local vel = hrp.AssemblyLinearVelocity
-            if vel.Y >= MIN_FALL_SPEED then return end
-
-            local params = RaycastParams.new()
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            params.FilterDescendantsInstances = { char }
-            params.IgnoreWater = true
-            local result = workspace:Raycast(hrp.Position, Vector3.new(0, -GROUND_CHECK, 0), params)
-            if not result then return end
-
-            local distToGround = hrp.Position.Y - result.Position.Y
-            if distToGround <= 1.5 then
-                hrp.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
-                hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + HOP_HEIGHT, hrp.Position.Z)
-            end
             if vel.Y < -50 then
                 hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -50, vel.Z)
             end
@@ -300,7 +276,7 @@ function F.ToggleFallDamage(state)
     end
 end
 
--- Wall Climb — медленный
+-- Wall Climb — горизонтальный (вертикаль режется)
 local WallClimb = { active = false, speed = 8, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
 F.WallClimb = WallClimb
 
@@ -322,7 +298,7 @@ function F.ToggleWallClimb(state)
         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
         WallClimb.bv = Instance.new("BodyVelocity")
-        WallClimb.bv.MaxForce = Vector3.new(2e4, 2e4, 2e4)
+        WallClimb.bv.MaxForce = Vector3.new(2e4, 0, 2e4)
         WallClimb.bv.Velocity = Vector3.zero
         WallClimb.bv.Parent = hrp
         WallClimb.conn = RunService.RenderStepped:Connect(function()
@@ -343,7 +319,8 @@ function F.ToggleWallClimb(state)
                 WallClimb.bv.Velocity = Vector3.zero
                 return
             end
-            WallClimb.bv.Velocity = Vector3.new(0, 8, 0) + (-normal * WallClimb.push)
+            -- Только вверх 5 studs/sec (медленно, чтобы не резалось)
+            WallClimb.bv.Velocity = Vector3.new(0, 5, 0) + (-normal * WallClimb.push)
         end)
     else
         if WallClimb.conn then WallClimb.conn:Disconnect(); WallClimb.conn = nil end
@@ -351,8 +328,8 @@ function F.ToggleWallClimb(state)
     end
 end
 
--- Freecam — с правильным горизонтом (yaw/pitch отдельно)
-local Freecam = { active = false, pos = Vector3.zero, yaw = 0, pitch = 0, rot = CFrame.new(), speed = 40, hud = nil, conn = nil }
+-- Freecam — с сохранением prompts
+local Freecam = { active = false, pos = Vector3.zero, yaw = 0, pitch = 0, rot = CFrame.new(), speed = 40, hud = nil, conn = nil, savedPrompts = {} }
 F.Freecam = Freecam
 
 function F.ToggleFreecam(state)
@@ -365,17 +342,37 @@ function F.ToggleFreecam(state)
         Freecam.pitch = math.asin(math.clamp(lookDir.Y, -1, 1))
 
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.PlatformStand = true end
+        if hum then
+            -- НЕ PlatformStand — иначе теряется interact
+            hum.WalkSpeed = 0
+            hum.JumpPower = 0
+        end
+
         local char = LP.Character
         if char then
             for _, p in ipairs(char:GetDescendants()) do
                 if p:IsA("BasePart") then p.LocalTransparencyModifier = 1 end
             end
         end
+
         Camera.CameraType = Enum.CameraType.Scriptable
+
+        -- Увеличиваем дистанцию всех ProximityPrompt
+        Freecam.savedPrompts = {}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                Freecam.savedPrompts[obj] = {
+                    distance = obj.MaxActivationDistance,
+                }
+                pcall(function()
+                    obj.MaxActivationDistance = 500
+                end)
+            end
+        end
+
         if not Freecam.hud then
             local hud = Instance.new("TextLabel")
-            hud.Size = UDim2.new(0, 300, 0, 24)
+            hud.Size = UDim2.new(0, 340, 0, 24)
             hud.Position = UDim2.new(0, 10, 1, -40)
             hud.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
             hud.BackgroundTransparency = 0.5
@@ -388,6 +385,7 @@ function F.ToggleFreecam(state)
             Freecam.hud = hud
         end
         Freecam.hud.Visible = true
+
         Freecam.conn = RunService.RenderStepped:Connect(function(dt)
             if not Freecam.active then return end
             local delta = UserInputService:GetMouseDelta()
@@ -421,16 +419,28 @@ function F.ToggleFreecam(state)
             Camera.CFrame = CFrame.new(Freecam.pos) * rot
             if Freecam.hud then
                 Freecam.hud.Text = string.format(
-                    " FREECAM  X:%.0f Y:%.0f Z:%.0f  pitch:%.0f°",
-                    Freecam.pos.X, Freecam.pos.Y, Freecam.pos.Z,
-                    math.deg(Freecam.pitch))
+                    " FREECAM  X:%.0f Y:%.0f Z:%.0f", Freecam.pos.X, Freecam.pos.Y, Freecam.pos.Z)
             end
         end)
     else
+        -- Восстанавливаем prompts
+        for prompt, data in pairs(Freecam.savedPrompts) do
+            if prompt and prompt.Parent then
+                pcall(function()
+                    prompt.MaxActivationDistance = data.distance
+                end)
+            end
+        end
+        Freecam.savedPrompts = {}
+
         if Freecam.conn then Freecam.conn:Disconnect(); Freecam.conn = nil end
         Camera.CameraType = Enum.CameraType.Custom
+
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.PlatformStand = false end
+        if hum then
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+        end
         local char = LP.Character
         if char then
             for _, p in ipairs(char:GetDescendants()) do
@@ -441,10 +451,11 @@ function F.ToggleFreecam(state)
     end
 end
 
--- Freecam Follow
+-- Freecam Follow — со паузой при тапе (для interact)
 local FreecamFollow = {
-    enabled = false, key = Enum.KeyCode.T, tpInterval = 0.1,
+    enabled = false, key = Enum.KeyCode.T, tpInterval = 0.3,
     lastTP = 0, conn = nil, savedGroundPos = nil,
+    pauseUntil = 0,
 }
 F.FreecamFollow = FreecamFollow
 
@@ -466,7 +477,8 @@ local function IsInventoryUIOpen()
             local n = string.lower(gui.Name)
             if n:find("inventory") or n:find("storage") or n:find("chest")
             or n:find("container") or n:find("loot") or n:find("box")
-            or n:find("craft") or n:find("shop") or n:find("dialog") then
+            or n:find("craft") or n:find("shop") or n:find("dialog")
+            or n:find("prompt") or n:find("interact") then
                 return true
             end
         end
@@ -484,6 +496,12 @@ local function StartFreecamFollow()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
+        -- Пауза при тапе
+        if tick() < FreecamFollow.pauseUntil then
+            return
+        end
+
+        -- Если UI открыт — стоим
         if IsInventoryUIOpen() then
             if FreecamFollow.savedGroundPos then
                 hrp.CFrame = CFrame.new(FreecamFollow.savedGroundPos)
@@ -498,18 +516,16 @@ local function StartFreecamFollow()
 
         local camTarget = Freecam.pos - Vector3.new(0, 3, 0)
         local groundPos = FindGroundBelow(camTarget)
-        if not groundPos then return end
-        if (camTarget - groundPos).Magnitude > 100 then return end
-
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = false end
+        if not groundPos then
+            groundPos = camTarget
         end
+
+        if (groundPos - camTarget).Magnitude > 50 then return end
+
         hrp.CFrame = CFrame.new(groundPos)
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
-        end
+
         FreecamFollow.savedGroundPos = groundPos
     end)
 end
@@ -547,6 +563,27 @@ function F.ToggleFreecamFollow(state)
         print("[Rusted FreecamFollow] OFF")
     end
 end
+
+-- Пауза при тапе (для interact во Freecam Follow)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if not FreecamFollow.enabled then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        FreecamFollow.pauseUntil = tick() + 1.2
+        -- Принудительно возвращаем персонажа на последнюю сохранённую позицию
+        if FreecamFollow.savedGroundPos then
+            local char = LP.Character
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = CFrame.new(FreecamFollow.savedGroundPos)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                end
+            end
+        end
+    end
+end)
 
 -- Хоткеи F и T
 UserInputService.InputBegan:Connect(function(input, gpe)
@@ -624,47 +661,16 @@ end
 StartVoidWatcher()
 
 -- ============================================================
---  SPACE
+--  SPACE (для ПК, на мобиле бесполезно)
 -- ============================================================
 
-local SPACE_FORCE = 5000
 function F.SendToSpace(target)
-    if not target or not target.Character then return end
-    local char = target.Character
-    local hrp  = char:FindFirstChild("HumanoidRootPart")
-    local hum  = char:FindFirstChildOfClass("Humanoid")
-    if not hrp then return end
-    if hum then
-        hum.PlatformStand = true
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-    end
-    for _, v in ipairs(hrp:GetChildren()) do
-        if v:IsA("BodyVelocity") or v:IsA("BodyGyro")
-        or v:IsA("LinearVelocity") or v:IsA("AlignOrientation") then v:Destroy() end
-    end
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Velocity = Vector3.new(math.random(-200,200), SPACE_FORCE, math.random(-200,200))
-    bv.Parent = hrp
-    local bg = Instance.new("BodyGyro")
-    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bg.P = 100000
-    bg.CFrame = hrp.CFrame
-    bg.Parent = hrp
-    task.delay(2, function()
-        if bv.Parent then bv:Destroy() end
-        if bg.Parent then bg:Destroy() end
-        if hum and hum.Parent then
-            hum.PlatformStand = false
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-    end)
+    -- Не работает в Rusted (сервер режет Y), оставлено для совместимости
+    return
 end
 
 function F.SendAllToSpace()
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP then F.SendToSpace(plr) end
-    end
+    return
 end
 
 function F.TeleportTo(name)
@@ -672,7 +678,10 @@ function F.TeleportTo(name)
     if not target or not target.Character then return end
     local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
     local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if tHRP and myHRP then myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 0, 3) end
+    if tHRP and myHRP then
+        -- Телепорт только по XZ (Y режется)
+        myHRP.CFrame = CFrame.new(tHRP.Position.X, myHRP.Position.Y, tHRP.Position.Z) * CFrame.new(0, 0, 3)
+    end
 end
 
 -- ============================================================
@@ -808,9 +817,7 @@ local function EnableSilentHook()
         local target = Aim.locked or FindTarget()
         if not target then return oldNamecall(self, ...) end
         local part = GetAimPart(target.Character)
-        if not part then return oldNamecall(self, ...) end
-
-        local toTarget = part.Position - origin
+        if not part then return oldNamecall(self, ...) end        local toTarget = part.Position - origin
         args[2] = toTarget.Unit * direction.Magnitude
         return oldNamecall(self, table.unpack(args))
     end)
@@ -915,12 +922,6 @@ local function GetPlayerWeapons(plr)
         for _, child in ipairs(char:GetChildren()) do
             if child:IsA("Tool") then add(child.Name)
             elseif child:IsA("Model") and MatchesWeapon(child) then add(child.Name) end
-        end
-        for _, desc in ipairs(char:GetDescendants()) do
-            if (desc:IsA("Model") or desc:IsA("BasePart"))
-            and MatchesWeapon(desc) and not desc:IsDescendantOf(espFolder) then
-                add(desc.Name)
-            end
         end
     end
     local bp = plr:FindFirstChildOfClass("Backpack")
@@ -1148,7 +1149,6 @@ F.ORES = ORES
 local function GetOreType(inst)
     if not inst:IsA("BasePart") and not inst:IsA("Model") then return nil end
 
-    -- ИСКЛЮЧЕНИЯ: двери, стены, постройки
     local fullName = ""
     local p = inst
     local depth = 0
@@ -1693,7 +1693,7 @@ end
 -- ============================================================
 
 local AutoFarm = {
-    active = false, mode = "walk", speed = 25, flyHeight = 5,
+    active = false, mode = "walk", speed = 15, flyHeight = 5,
     reachDist = 12, mineTime = 3, scanRange = 300,
     targetTypes = { metal = true, sulfur = true, stone = true },
     bag = nil, route = {}, routeIndex = 1,
@@ -1707,151 +1707,6 @@ local AutoFarm = {
     damageDetect = true,
 }
 F.AutoFarm = AutoFarm
-
-local HideUnderground = { active = false, depthOffset = 20, platform = nil, bv = nil, savedPos = nil, state = "surface", diveStart = 0 }
-F.HideUnderground = HideUnderground
-
-local function CreateHidePlatform()
-    local p = Instance.new("Part")
-    p.Name = "RustedHidePlatform"
-    p.Size = Vector3.new(8, 1, 8)
-    p.Transparency = 1
-    p.CanCollide = true
-    p.CanQuery = false
-    p.CanTouch = false
-    p.Anchored = true
-    p.Massless = true
-    p.Parent = workspace
-    return p
-end
-
-local function StartDive()
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    HideUnderground.savedPos = hrp.CFrame
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") then p.CanCollide = false end
-    end
-    local bv = Instance.new("BodyVelocity")
-    bv.Name = "RustedHideBV"
-    bv.MaxForce = Vector3.new(0, math.huge, 0)
-    bv.Velocity = Vector3.new(0, -80, 0)
-    bv.Parent = hrp
-    HideUnderground.bv = bv
-    HideUnderground.state = "diving"
-    HideUnderground.diveStart = tick()
-end
-
-local function ReachedUndergroundDepth()
-    local char = LP.Character
-    if not char then return false end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp or not HideUnderground.savedPos then return false end
-    local targetY = HideUnderground.savedPos.Position.Y - HideUnderground.depthOffset
-    return hrp.Position.Y <= targetY
-end
-
-local function AnchorUnderground()
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    HideUnderground.platform = CreateHidePlatform()
-    HideUnderground.platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
-    if HideUnderground.bv then
-        HideUnderground.bv.Velocity = Vector3.zero
-        HideUnderground.bv.MaxForce = Vector3.new(0, math.huge, 0)
-    end
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") then p.CanCollide = true end
-    end
-    HideUnderground.state = "underground"
-end
-
-local function SurfaceUp()
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    if HideUnderground.platform then HideUnderground.platform:Destroy(); HideUnderground.platform = nil end
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") then p.CanCollide = false end
-    end
-    if HideUnderground.bv then
-        HideUnderground.bv.MaxForce = Vector3.new(0, math.huge, 0)
-        HideUnderground.bv.Velocity = Vector3.new(0, 80, 0)
-    else
-        local bv = Instance.new("BodyVelocity")
-        bv.Name = "RustedHideBV"
-        bv.MaxForce = Vector3.new(0, math.huge, 0)
-        bv.Velocity = Vector3.new(0, 80, 0)
-        bv.Parent = hrp
-        HideUnderground.bv = bv
-    end
-    HideUnderground.state = "surfacing"
-end
-
-local function ReachedSurface()
-    local char = LP.Character
-    if not char or not HideUnderground.savedPos then return false end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    return hrp.Position.Y >= HideUnderground.savedPos.Position.Y - 2
-end
-
-local function FinishSurface()
-    local char = LP.Character
-    if not char then return end
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") then p.CanCollide = true end
-    end
-    if HideUnderground.bv then HideUnderground.bv:Destroy(); HideUnderground.bv = nil end
-    HideUnderground.state = "surface"
-    HideUnderground.savedPos = nil
-end
-
-local function CleanupHide()
-    if HideUnderground.platform then HideUnderground.platform:Destroy(); HideUnderground.platform = nil end
-    if HideUnderground.bv then HideUnderground.bv:Destroy(); HideUnderground.bv = nil end
-    local char = LP.Character
-    if char then
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
-        end
-    end
-    HideUnderground.state = "surface"
-    HideUnderground.savedPos = nil
-end
-
-function F.ToggleHideUnderground(state)
-    HideUnderground.active = state
-    if not state and HideUnderground.state ~= "surface" then SurfaceUp() end
-end
-
-local function UpdateHideUnderground()
-    if not HideUnderground.active then return end
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local playersNear = #AutoFarm.nearbyPlayers > 0
-    if HideUnderground.state == "surface" and playersNear then
-        StartDive()
-    elseif HideUnderground.state == "diving" then
-        if ReachedUndergroundDepth() or tick() - HideUnderground.diveStart > 3 then
-            AnchorUnderground()
-        end
-    elseif HideUnderground.state == "underground" then
-        if HideUnderground.platform then
-            HideUnderground.platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
-        end
-        if not playersNear and not AutoFarm.playerPaused then SurfaceUp() end
-    elseif HideUnderground.state == "surfacing" then
-        if ReachedSurface() then FinishSurface() end
-    end
-end
 
 local function BuildRoute()
     local char = LP.Character
@@ -1943,19 +1798,13 @@ local function MoveToward(targetPos, dt)
     if not AutoFarm._bv then
         AutoFarm._bv = Instance.new("BodyVelocity")
         AutoFarm._bv.Name = "RustedFarmBV"
-        AutoFarm._bv.MaxForce = Vector3.new(5e4, 0, 5e4)
+        AutoFarm._bv.MaxForce = Vector3.new(3e4, 0, 3e4)
         AutoFarm._bv.P = 2000
         AutoFarm._bv.Parent = hrp
     end
 
-    local speed = AutoFarm.speed
-    if AutoFarm.mode == "fly" then
-        local targetY = targetPos.Y + AutoFarm.flyHeight
-        local yDiff = targetY - current.Y
-        AutoFarm._bv.Velocity = Vector3.new(moveDir.X * speed, yDiff * 2, moveDir.Z * speed)
-    else
-        AutoFarm._bv.Velocity = Vector3.new(moveDir.X * speed, 0, moveDir.Z * speed)
-    end
+    -- Только горизонтальное движение, Y режется сервером
+    AutoFarm._bv.Velocity = Vector3.new(moveDir.X * AutoFarm.speed, 0, moveDir.Z * AutoFarm.speed)
     hrp.CFrame = CFrame.new(current, Vector3.new(targetPos.X, current.Y, targetPos.Z))
 end
 
@@ -2057,7 +1906,7 @@ local function CheckPlayers()
                 return true
             else
                 AutoFarm.playerPaused = false
-                print("[Rusted AutoFarm] OK Игроки ушли, продолжаю")
+                print("[Rusted AutoFarm] OK Игроки ушли")
             end
         end
     end
@@ -2071,7 +1920,7 @@ local function CheckLimits()
             AutoFarm.stoppedBy = "time"
             PlaySound("farm_complete")
             task.spawn(PlayBeepSequence)
-            print(string.format("[Rusted AutoFarm] OK Время вышло (%.1f мин). Добыто: %d", elapsed, AutoFarm.kills))
+            print(string.format("[Rusted AutoFarm] OK Время вышло"))
             F.ToggleAutoFarm(false)
             return true
         end
@@ -2080,7 +1929,7 @@ local function CheckLimits()
         AutoFarm.stoppedBy = "kills"
         PlaySound("farm_complete")
         task.spawn(PlayBeepSequence)
-        print(string.format("[Rusted AutoFarm] OK Лимит ресурсов: %d. Остановлен.", AutoFarm.kills))
+        print(string.format("[Rusted AutoFarm] OK Лимит ресурсов"))
         F.ToggleAutoFarm(false)
         return true
     end
@@ -2111,7 +1960,6 @@ local function StartAutoFarm()
             local playersNear = CheckPlayers()
             if playersNear then
                 StopMovement()
-                UpdateHideUnderground()
                 return
             end
         end
@@ -2119,7 +1967,6 @@ local function StartAutoFarm()
             AutoFarm.lastScan = tick()
             if CheckLimits() then return end
         end
-        UpdateHideUnderground()
 
         if AutoFarm.state == "idle" then
             local target = GetNextTarget()
@@ -2173,7 +2020,6 @@ local function StopAutoFarm()
     AutoFarm.playerPaused = false
     AutoFarm.moveStart = nil
     AutoFarm.route = {}
-    CleanupHide()
 end
 
 function F.ToggleAutoFarm(state)
@@ -2406,7 +2252,6 @@ RunService.RenderStepped:Connect(function(dt)
                         if showBox then
                             d.box.Adornee = hrp
                             d.box.Visible = true
-                            d.box.Size = Vector3.new(4, 5, 4)
                             if ESP.rainbow then d.box.Color3 = RainbowColor(d.hue)
                             else d.box.Color3 = Color3.fromRGB(255, 80, 80) end
                         else
@@ -2424,7 +2269,8 @@ RunService.RenderStepped:Connect(function(dt)
                         local maxHp = math.floor(hum.MaxHealth)
                         local weapons = GetPlayerWeapons(plr)
                         local weaponText = FormatWeaponList(weapons)
-                        if d.visible then                            d.info.gui.Enabled = true
+                        if d.visible then
+                            d.info.gui.Enabled = true
                             d.info.label.Text = string.format("%s\nHP %d/%d | %dm | %s",
                                 plr.Name, hp, maxHp, distM, weaponText)
                             d.info.gui.Adornee = hrp
@@ -2661,5 +2507,15 @@ function F.ToggleRadar(state)
         radarActive = {}
     end
 end
+
+-- ============================================================
+--  ЭКСПОРТ для мобильной кнопки
+-- ============================================================
+
+_G.RustedToggleFollow = function()
+    F.ToggleFreecamFollow(not FreecamFollow.enabled)
+end
+
+_G.RustedFeatures = F
 
 return F
