@@ -1,4 +1,4 @@
---[[ FEATURES — все функции: движение, ESP, AutoFarm, Watcher ]]
+--[[ FEATURES part 1 ]]
 
 local CORE = ...
 local Players = CORE.Players
@@ -69,7 +69,7 @@ function F.ToggleInfJump(state)
     end
 end
 
--- Fly — только горизонтальный (вертикаль режется сервером)
+-- Fly (горизонтальный, вертикаль сервер режет)
 local flyActive = false
 local flyBV, flyConn
 function F.ToggleFly(state)
@@ -77,9 +77,6 @@ function F.ToggleFly(state)
     if state then
         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-        local hum = LP.Character:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-
         flyBV = Instance.new("BodyVelocity")
         flyBV.MaxForce = Vector3.new(5e4, 0, 5e4)
         flyBV.Velocity = Vector3.zero
@@ -87,22 +84,16 @@ function F.ToggleFly(state)
 
         flyConn = RunService.RenderStepped:Connect(function()
             if not flyActive or not hrp or not hrp.Parent then return end
-
             local move = Vector3.zero
             local cam = Camera.CFrame
-            -- На мобиле — движение только через AutoFarm или позицию камеры
             if UserInputService.KeyboardEnabled then
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.LookVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.LookVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.RightVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.RightVector end
             end
-
-            -- Убираем вертикальную составляющую (сервер режет)
             local horiz = Vector3.new(move.X, 0, move.Z)
             if horiz.Magnitude > 0 then horiz = horiz.Unit end
-
-            -- Скорость 15 — безопасно
             flyBV.Velocity = Vector3.new(horiz.X * 15, 0, horiz.Z * 15)
         end)
     else
@@ -111,7 +102,7 @@ function F.ToggleFly(state)
     end
 end
 
--- Noclip — только горизонтальный
+-- Noclip
 local Noclip = { active = false, speed = 15, platform = nil, bv = nil, conns = {} }
 F.Noclip = Noclip
 
@@ -167,16 +158,13 @@ local function EnableHardNoclip()
         if not myHrp then return end
         local myHum = c:FindFirstChildOfClass("Humanoid")
         if not myHum or not Noclip.bv or not Noclip.bv.Parent then return end
-
         local moveDir = myHum.MoveDirection
         if moveDir.Magnitude > 0.1 then
-            -- Только XZ движение, без Y (сервер режет Y)
             local horiz = Vector3.new(moveDir.X, 0, moveDir.Z).Unit
             Noclip.bv.Velocity = horiz * Noclip.speed
         else
             Noclip.bv.Velocity = Vector3.zero
         end
-
         if Noclip.platform and Noclip.platform.Parent then
             Noclip.platform.CFrame = CFrame.new(myHrp.Position - Vector3.new(0, 3, 0))
         end
@@ -247,7 +235,6 @@ function F.ToggleFallDamage(state)
                 hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -50, vel.Z)
             end
         end))
-
         local function hookHum(hum)
             fallDamageBag:add(hum.StateChanged:Connect(function(_, newState)
                 if newState == Enum.HumanoidStateType.Freefall then
@@ -259,7 +246,6 @@ function F.ToggleFallDamage(state)
                 end
             end))
         end
-
         if LP.Character then
             local hum = LP.Character:FindFirstChildOfClass("Humanoid")
             if hum then hookHum(hum) end
@@ -276,8 +262,8 @@ function F.ToggleFallDamage(state)
     end
 end
 
--- Wall Climb — горизонтальный (вертикаль режется)
-local WallClimb = { active = false, speed = 8, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
+-- Wall Climb
+local WallClimb = { active = false, speed = 5, push = 3, bv = nil, conn = nil, key = Enum.KeyCode.Space }
 F.WallClimb = WallClimb
 
 local function WallClimbRay()
@@ -319,7 +305,6 @@ function F.ToggleWallClimb(state)
                 WallClimb.bv.Velocity = Vector3.zero
                 return
             end
-            -- Только вверх 5 studs/sec (медленно, чтобы не резалось)
             WallClimb.bv.Velocity = Vector3.new(0, 5, 0) + (-normal * WallClimb.push)
         end)
     else
@@ -328,7 +313,7 @@ function F.ToggleWallClimb(state)
     end
 end
 
--- Freecam — с сохранением prompts
+-- Freecam
 local Freecam = { active = false, pos = Vector3.zero, yaw = 0, pitch = 0, rot = CFrame.new(), speed = 40, hud = nil, conn = nil, savedPrompts = {} }
 F.Freecam = Freecam
 
@@ -343,7 +328,6 @@ function F.ToggleFreecam(state)
 
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
         if hum then
-            -- НЕ PlatformStand — иначе теряется interact
             hum.WalkSpeed = 0
             hum.JumpPower = 0
         end
@@ -357,13 +341,11 @@ function F.ToggleFreecam(state)
 
         Camera.CameraType = Enum.CameraType.Scriptable
 
-        -- Увеличиваем дистанцию всех ProximityPrompt
+        -- Увеличиваем дистанцию prompts
         Freecam.savedPrompts = {}
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("ProximityPrompt") then
-                Freecam.savedPrompts[obj] = {
-                    distance = obj.MaxActivationDistance,
-                }
+                Freecam.savedPrompts[obj] = { distance = obj.MaxActivationDistance }
                 pcall(function()
                     obj.MaxActivationDistance = 500
                 end)
@@ -393,8 +375,7 @@ function F.ToggleFreecam(state)
                 Freecam.yaw = Freecam.yaw - math.rad(delta.X * 0.4)
                 Freecam.pitch = math.clamp(
                     Freecam.pitch - math.rad(delta.Y * 0.4),
-                    math.rad(-89),
-                    math.rad(89)
+                    math.rad(-89), math.rad(89)
                 )
             end
             local rot = CFrame.fromEulerAnglesYXZ(Freecam.pitch, Freecam.yaw, 0)
@@ -423,12 +404,9 @@ function F.ToggleFreecam(state)
             end
         end)
     else
-        -- Восстанавливаем prompts
         for prompt, data in pairs(Freecam.savedPrompts) do
             if prompt and prompt.Parent then
-                pcall(function()
-                    prompt.MaxActivationDistance = data.distance
-                end)
+                pcall(function() prompt.MaxActivationDistance = data.distance end)
             end
         end
         Freecam.savedPrompts = {}
@@ -451,7 +429,7 @@ function F.ToggleFreecam(state)
     end
 end
 
--- Freecam Follow — со паузой при тапе (для interact)
+-- Freecam Follow
 local FreecamFollow = {
     enabled = false, key = Enum.KeyCode.T, tpInterval = 0.3,
     lastTP = 0, conn = nil, savedGroundPos = nil,
@@ -472,19 +450,26 @@ end
 local function IsInventoryUIOpen()
     local pg = LP:FindFirstChildOfClass("PlayerGui")
     if not pg then return false end
+
+    local inv = pg:FindFirstChild("Inventory")
+    if inv and inv:IsA("ScreenGui") and inv.Enabled then
+        local st = inv:FindFirstChild("Storage")
+        if st and st:IsA("Frame") and st.Visible then
+            return true
+        end
+    end
+
     for _, gui in ipairs(pg:GetChildren()) do
         if gui:IsA("ScreenGui") and gui.Enabled then
             local n = string.lower(gui.Name)
-            if n:find("inventory") or n:find("storage") or n:find("chest")
-            or n:find("container") or n:find("loot") or n:find("box")
-            or n:find("craft") or n:find("shop") or n:find("dialog")
-            or n:find("prompt") or n:find("interact") then
+            if n:find("storage") or n:find("chest") or n:find("container") then
                 return true
             end
         end
     end
     return false
 end
+F.IsInventoryUIOpen = IsInventoryUIOpen
 
 local function StartFreecamFollow()
     if FreecamFollow.conn then return end
@@ -496,12 +481,8 @@ local function StartFreecamFollow()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        -- Пауза при тапе
-        if tick() < FreecamFollow.pauseUntil then
-            return
-        end
+        if tick() < FreecamFollow.pauseUntil then return end
 
-        -- Если UI открыт — стоим
         if IsInventoryUIOpen() then
             if FreecamFollow.savedGroundPos then
                 hrp.CFrame = CFrame.new(FreecamFollow.savedGroundPos)
@@ -515,10 +496,7 @@ local function StartFreecamFollow()
         FreecamFollow.lastTP = now
 
         local camTarget = Freecam.pos - Vector3.new(0, 3, 0)
-        local groundPos = FindGroundBelow(camTarget)
-        if not groundPos then
-            groundPos = camTarget
-        end
+        local groundPos = FindGroundBelow(camTarget) or camTarget
 
         if (groundPos - camTarget).Magnitude > 50 then return end
 
@@ -539,6 +517,7 @@ end
 
 function F.ToggleFreecamFollow(state)
     FreecamFollow.enabled = state
+    _G.RustedFollowActive = state
     if state then
         if not Freecam.active then F.ToggleFreecam(true) end
         StartFreecamFollow()
@@ -564,32 +543,51 @@ function F.ToggleFreecamFollow(state)
     end
 end
 
--- Пауза при тапе (для interact во Freecam Follow)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if not FreecamFollow.enabled then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        FreecamFollow.pauseUntil = tick() + 1.2
-        -- Принудительно возвращаем персонажа на последнюю сохранённую позицию
-        if FreecamFollow.savedGroundPos then
-            local char = LP.Character
-            if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    hrp.CFrame = CFrame.new(FreecamFollow.savedGroundPos)
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                end
-            end
-        end
-    end
-end)
+-- ============================================================
+--  INTERACT — открыть сундук через E (VIM)
+-- ============================================================
 
--- Хоткеи F и T
+local VIM = game:GetService("VirtualInputManager")
+
+function F.OpenCrateWithE()
+    if not VIM then
+        print("[Rusted] VIM недоступен")
+        return
+    end
+
+    if IsInventoryUIOpen() then
+        VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.05)
+        VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        print("[Rusted Interact] Закрываю UI")
+        return
+    end
+
+    FreecamFollow.pauseUntil = tick() + 2
+    task.wait(0.5)
+
+    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(0.05)
+    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+
+    print("[Rusted Interact] E отправлен")
+end
+
+-- Экспорт для мобильной кнопки
+_G.RustedOpenCrate = function()
+    F.OpenCrateWithE()
+end
+
+-- Хоткеи F, T, Q
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.F then F.ToggleFreecam(not Freecam.active) end
     if input.KeyCode == Enum.KeyCode.T then F.ToggleFreecamFollow(not FreecamFollow.enabled) end
+    if input.KeyCode == Enum.KeyCode.Q then
+        if FreecamFollow.enabled then
+            F.OpenCrateWithE()
+        end
+    end
 end)
 
 -- Void TP
@@ -661,17 +659,11 @@ end
 StartVoidWatcher()
 
 -- ============================================================
---  SPACE (для ПК, на мобиле бесполезно)
+--  SPACE (заглушки, не работает)
 -- ============================================================
 
-function F.SendToSpace(target)
-    -- Не работает в Rusted (сервер режет Y), оставлено для совместимости
-    return
-end
-
-function F.SendAllToSpace()
-    return
-end
+function F.SendToSpace(target) return end
+function F.SendAllToSpace() return end
 
 function F.TeleportTo(name)
     local target = Players:FindFirstChild(name)
@@ -679,7 +671,6 @@ function F.TeleportTo(name)
     local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
     local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if tHRP and myHRP then
-        -- Телепорт только по XZ (Y режется)
         myHRP.CFrame = CFrame.new(tHRP.Position.X, myHRP.Position.Y, tHRP.Position.Z) * CFrame.new(0, 0, 3)
     end
 end
@@ -801,7 +792,6 @@ local function EnableSilentHook()
         local method = getnamecallmethod()
         if method ~= "Raycast" then return oldNamecall(self, ...) end
         if self ~= workspace then return oldNamecall(self, ...) end
-
         local args = {...}
         if #args < 2 then return oldNamecall(self, ...) end
         local origin = args[1]
@@ -810,14 +800,13 @@ local function EnableSilentHook()
             return oldNamecall(self, ...)
         end
         if direction.Magnitude < 50 then return oldNamecall(self, ...) end
-
         local camPos = Camera.CFrame.Position
         if (origin - camPos).Magnitude > 20 then return oldNamecall(self, ...) end
-
         local target = Aim.locked or FindTarget()
         if not target then return oldNamecall(self, ...) end
         local part = GetAimPart(target.Character)
-        if not part then return oldNamecall(self, ...) end        local toTarget = part.Position - origin
+        if not part then return oldNamecall(self, ...) end
+        local toTarget = part.Position - origin
         args[2] = toTarget.Unit * direction.Magnitude
         return oldNamecall(self, table.unpack(args))
     end)
@@ -852,7 +841,6 @@ local function UpdateAim(dt)
     UpdateAimlock()
     FovGui.Size = UDim2.new(0, Aim.fov * 2, 0, Aim.fov * 2)
 end
-
 -- ============================================================
 --  ESP
 -- ============================================================
@@ -1052,26 +1040,26 @@ local function ScanBots()
     end
 end
 
+-- BOXES — расширенный список под Rusted
 local BOX_KEYWORDS = {
-    "smallcrate", "largecrate", "lootcrate", "loot_crate",
-    "woodencrate", "foodcrate", "medcrate", "medicalcrate",
-    "militarycrate", "supplycrate",
-    "supplydrop", "airdrop", "airdrops",
-    "basicchest", "goldchest", "largechest",
-    "storagebox", "lootbox", "medbox",
+    "wooden crate", "woodencrate", "military crate", "militarycrate",
+    "food crate", "foodcrate", "crate", "militarycrate", "lootcrate",
+    "smallcrate", "largecrate", "loot_crate",
+    "barrel", "storagebox", "lootbox", "medbox",
     "recycler", "furnace", "fridge",
+    "safe", "storage", "locker",
 }
 
 local function IsBoxPart(inst)
-    if not inst:IsA("BasePart") then return false end
+    if not inst:IsA("Model") and not inst:IsA("BasePart") then return false end
     local n = string.lower(inst.Name):gsub("[%s_%-%.]", "")
     for _, k in ipairs(BOX_KEYWORDS) do
         local kk = string.lower(k):gsub("[%s_%-%.]", "")
         if n == kk then return true end
     end
-    local parent = inst.Parent
-    if parent and parent:IsA("Model") then
-        local pn = string.lower(parent.Name):gsub("[%s_%-%.]", "")
+    -- Проверка родителя
+    if inst.Parent and inst.Parent:IsA("Model") then
+        local pn = string.lower(inst.Parent.Name):gsub("[%s_%-%.]", "")
         for _, k in ipairs(BOX_KEYWORDS) do
             local kk = string.lower(k):gsub("[%s_%-%.]", "")
             if pn == kk then return true end
@@ -1080,11 +1068,11 @@ local function IsBoxPart(inst)
     return false
 end
 
-local function CreateBoxLabel(part)
+local function CreateBoxLabel(part, customName)
     local bb = Instance.new("BillboardGui")
     bb.Name = "RustedBoxLabel"
-    bb.Size = UDim2.new(0, 140, 0, 20)
-    bb.StudsOffset = Vector3.new(0, 2, 0)
+    bb.Size = UDim2.new(0, 160, 0, 20)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
     bb.AlwaysOnTop = true
     bb.MaxDistance = 800
     bb.Adornee = part
@@ -1097,7 +1085,7 @@ local function CreateBoxLabel(part)
     tl.Font = Enum.Font.GothamBold
     tl.TextStrokeTransparency = 0
     tl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    tl.Text = "[ " .. part.Name .. " ]"
+    tl.Text = "[ " .. (customName or part.Name) .. " ]"
     tl.Parent = bb
     return bb
 end
@@ -1106,12 +1094,19 @@ local function ScanBoxes()
     local found = {}
     for _, inst in ipairs(workspace:GetDescendants()) do
         if IsBoxPart(inst) then
-            found[inst] = true
-            if not boxESP[inst] then
-                local b = NewBox()
-                b.Color3 = Color3.fromRGB(255, 200, 50)
-                b.Size = inst.Size + Vector3.new(0.5, 0.5, 0.5)
-                boxESP[inst] = { box = b, label = CreateBoxLabel(inst) }
+            local part
+            if inst:IsA("BasePart") then part = inst
+            elseif inst:IsA("Model") then
+                part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+            end
+            if part then
+                found[part] = true
+                if not boxESP[part] then
+                    local b = NewBox()
+                    b.Color3 = Color3.fromRGB(255, 200, 50)
+                    b.Size = part.Size + Vector3.new(0.5, 0.5, 0.5)
+                    boxESP[part] = { box = b, label = CreateBoxLabel(part, inst.Name) }
+                end
             end
         end
     end
@@ -1124,22 +1119,27 @@ local function ScanBoxes()
     end
 end
 
+-- ORES — расширенный
 local ORES = {
     metal = {
-        keywords = { "metalore", "metal_ore", "metalore1", "metalore2", "ironore", "iron_ore", "hqmnode", "hqm_node", "hqm_ore", "highqualitynode" },
-        exactNames = { "MetalOre", "Metal Ore", "IronOre" },
+        keywords = { "metalore", "metal_ore", "metalore1", "metalore2",
+            "ironore", "iron_ore", "hqmnode", "hqm_node", "hqm_ore",
+            "highqualitynode", "metalnode", "metalspawn" },
+        exactNames = { "MetalOre", "Metal Ore", "IronOre", "MetalNode" },
         color = Color3.fromRGB(180, 180, 180),
         label = "Metal",
     },
     sulfur = {
-        keywords = { "sulfurore", "sulfur_ore", "sulfurnode", "sulfur_node", "sulphur", "sulphurore" },
-        exactNames = { "SulfurOre", "Sulfur Ore", "Sulphur" },
+        keywords = { "sulfurore", "sulfur_ore", "sulfurnode", "sulfur_node",
+            "sulphur", "sulphurore", "sulfurnode", "sulfurspawn" },
+        exactNames = { "SulfurOre", "Sulfur Ore", "Sulphur", "SulfurNode" },
         color = Color3.fromRGB(255, 230, 60),
         label = "Sulfur",
     },
     stone = {
-        keywords = { "stoneore", "stone_ore", "stonenode", "stone_node", "rocknode", "rock_node", "orespawn" },
-        exactNames = { "StoneOre", "Stone Ore", "RockNode" },
+        keywords = { "stoneore", "stone_ore", "stonenode", "stone_node",
+            "rocknode", "rock_node", "orespawn", "stonenode", "rockspawn" },
+        exactNames = { "StoneOre", "Stone Ore", "RockNode", "StoneNode" },
         color = Color3.fromRGB(220, 60, 60),
         label = "Stone",
     },
@@ -1178,7 +1178,9 @@ local function GetOreType(inst)
                 if n == k then return oreKey end
             end
             if inst:IsA("BasePart") then
-                local rt = inst:GetAttribute("ResourceType") or inst:GetAttribute("OreType") or inst:GetAttribute("Type")
+                local rt = inst:GetAttribute("ResourceType")
+                    or inst:GetAttribute("OreType")
+                    or inst:GetAttribute("Type")
                 if type(rt) == "string" then
                     local rtN = string.lower(rt):gsub("[%s_%-%.]", "")
                     for _, kw in ipairs(data.keywords) do
@@ -1248,6 +1250,7 @@ local function ScanOres()
     end
 end
 
+-- RT
 local RT_LOCATIONS = {
     { name = "Arctic Base",     keywords = {"arcticbase", "arctic_base", "arcticresearch"} },
     { name = "Bunker",          keywords = {"bunkerentrance", "bunker_entrance", "undergroundbunker"} },
@@ -1263,6 +1266,8 @@ local RT_LOCATIONS = {
     { name = "Train Yard",      keywords = {"trainyard", "train_yard"} },
     { name = "Gas Station",     keywords = {"gasstation"} },
     { name = "Dome",            keywords = {"dome"} },
+    { name = "Factory",         keywords = {"factory", "powerhouse"} },
+    { name = "Junkpile",        keywords = {"junkpile", "junk_pile"} },
     { name = "RT",              keywords = {"lootroom", "loot_room", "raidtarget"} },
 }
 local RT_COLOR = Color3.fromRGB(255, 100, 255)
@@ -1356,6 +1361,7 @@ local function ScanRT()
     end
 end
 
+-- Radar
 local RadarGui = Instance.new("Frame")
 RadarGui.Name = "Radar"
 RadarGui.Size = UDim2.new(0, 160, 0, 160)
@@ -1409,6 +1415,7 @@ local function NewRadarDot()
 end
 local function KillRadarDot(d) if d then pcall(function() d:Destroy() end) end end
 
+-- Look Tracer
 local LookTracer = {
     enabled = false, length = 500,
     color = Color3.fromRGB(255, 100, 100),
@@ -1444,6 +1451,7 @@ function F.ToggleLookTracer(state)
     end
 end
 
+-- Night Vision
 local NightVision = { active = false, bag = nil, light = nil, light2 = nil, saved = nil }
 
 local function SaveLighting()
@@ -1522,6 +1530,7 @@ function F.ToggleNightVision(state)
     end
 end
 
+-- Env Cleaner
 local EnvCleaner = { active = false, bag = nil, hidden = {} }
 
 local GRASS_KEYWORDS = {"grass", "foliage", "fern", "bush", "shrub", "weeds"}
@@ -1617,6 +1626,7 @@ local DangerScanner = {
     scanRadius = 200,
     lastCleanup = 0,
 }
+F.DangerScanner = DangerScanner
 
 local DAMAGE_KEYWORDS = {
     "spike", "trap", "damage", "hurt", "kill", "lava", "fire",
@@ -1646,8 +1656,7 @@ function DangerScanner.Refresh()
                 count += 1
             end
         end
-    end
-    if count > 0 then
+    end    if count > 0 then
         print(string.format("[Rusted DangerScanner] +%d опасных объектов", count))
     end
 end
@@ -1689,7 +1698,7 @@ function DangerScanner.Update()
 end
 
 -- ============================================================
---  AUTO-FARM v2
+--  AUTO-FARM
 -- ============================================================
 
 local AutoFarm = {
@@ -1707,6 +1716,151 @@ local AutoFarm = {
     damageDetect = true,
 }
 F.AutoFarm = AutoFarm
+
+local HideUnderground = { active = false, depthOffset = 20, platform = nil, bv = nil, savedPos = nil, state = "surface", diveStart = 0 }
+F.HideUnderground = HideUnderground
+
+local function CreateHidePlatform()
+    local p = Instance.new("Part")
+    p.Name = "RustedHidePlatform"
+    p.Size = Vector3.new(8, 1, 8)
+    p.Transparency = 1
+    p.CanCollide = true
+    p.CanQuery = false
+    p.CanTouch = false
+    p.Anchored = true
+    p.Massless = true
+    p.Parent = workspace
+    return p
+end
+
+local function StartDive()
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    HideUnderground.savedPos = hrp.CFrame
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = false end
+    end
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "RustedHideBV"
+    bv.MaxForce = Vector3.new(0, math.huge, 0)
+    bv.Velocity = Vector3.new(0, -80, 0)
+    bv.Parent = hrp
+    HideUnderground.bv = bv
+    HideUnderground.state = "diving"
+    HideUnderground.diveStart = tick()
+end
+
+local function ReachedUndergroundDepth()
+    local char = LP.Character
+    if not char then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp or not HideUnderground.savedPos then return false end
+    local targetY = HideUnderground.savedPos.Position.Y - HideUnderground.depthOffset
+    return hrp.Position.Y <= targetY
+end
+
+local function AnchorUnderground()
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    HideUnderground.platform = CreateHidePlatform()
+    HideUnderground.platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
+    if HideUnderground.bv then
+        HideUnderground.bv.Velocity = Vector3.zero
+        HideUnderground.bv.MaxForce = Vector3.new(0, math.huge, 0)
+    end
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = true end
+    end
+    HideUnderground.state = "underground"
+end
+
+local function SurfaceUp()
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if HideUnderground.platform then HideUnderground.platform:Destroy(); HideUnderground.platform = nil end
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = false end
+    end
+    if HideUnderground.bv then
+        HideUnderground.bv.MaxForce = Vector3.new(0, math.huge, 0)
+        HideUnderground.bv.Velocity = Vector3.new(0, 80, 0)
+    else
+        local bv = Instance.new("BodyVelocity")
+        bv.Name = "RustedHideBV"
+        bv.MaxForce = Vector3.new(0, math.huge, 0)
+        bv.Velocity = Vector3.new(0, 80, 0)
+        bv.Parent = hrp
+        HideUnderground.bv = bv
+    end
+    HideUnderground.state = "surfacing"
+end
+
+local function ReachedSurface()
+    local char = LP.Character
+    if not char or not HideUnderground.savedPos then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    return hrp.Position.Y >= HideUnderground.savedPos.Position.Y - 2
+end
+
+local function FinishSurface()
+    local char = LP.Character
+    if not char then return end
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = true end
+    end
+    if HideUnderground.bv then HideUnderground.bv:Destroy(); HideUnderground.bv = nil end
+    HideUnderground.state = "surface"
+    HideUnderground.savedPos = nil
+end
+
+local function CleanupHide()
+    if HideUnderground.platform then HideUnderground.platform:Destroy(); HideUnderground.platform = nil end
+    if HideUnderground.bv then HideUnderground.bv:Destroy(); HideUnderground.bv = nil end
+    local char = LP.Character
+    if char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+    HideUnderground.state = "surface"
+    HideUnderground.savedPos = nil
+end
+
+function F.ToggleHideUnderground(state)
+    HideUnderground.active = state
+    if not state and HideUnderground.state ~= "surface" then SurfaceUp() end
+end
+
+local function UpdateHideUnderground()
+    if not HideUnderground.active then return end
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local playersNear = #AutoFarm.nearbyPlayers > 0
+    if HideUnderground.state == "surface" and playersNear then
+        StartDive()
+    elseif HideUnderground.state == "diving" then
+        if ReachedUndergroundDepth() or tick() - HideUnderground.diveStart > 3 then
+            AnchorUnderground()
+        end
+    elseif HideUnderground.state == "underground" then
+        if HideUnderground.platform then
+            HideUnderground.platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
+        end
+        if not playersNear and not AutoFarm.playerPaused then SurfaceUp() end
+    elseif HideUnderground.state == "surfacing" then
+        if ReachedSurface() then FinishSurface() end
+    end
+end
 
 local function BuildRoute()
     local char = LP.Character
@@ -1803,7 +1957,6 @@ local function MoveToward(targetPos, dt)
         AutoFarm._bv.Parent = hrp
     end
 
-    -- Только горизонтальное движение, Y режется сервером
     AutoFarm._bv.Velocity = Vector3.new(moveDir.X * AutoFarm.speed, 0, moveDir.Z * AutoFarm.speed)
     hrp.CFrame = CFrame.new(current, Vector3.new(targetPos.X, current.Y, targetPos.Z))
 end
@@ -1960,6 +2113,7 @@ local function StartAutoFarm()
             local playersNear = CheckPlayers()
             if playersNear then
                 StopMovement()
+                UpdateHideUnderground()
                 return
             end
         end
@@ -1967,6 +2121,7 @@ local function StartAutoFarm()
             AutoFarm.lastScan = tick()
             if CheckLimits() then return end
         end
+        UpdateHideUnderground()
 
         if AutoFarm.state == "idle" then
             local target = GetNextTarget()
@@ -2020,6 +2175,7 @@ local function StopAutoFarm()
     AutoFarm.playerPaused = false
     AutoFarm.moveStart = nil
     AutoFarm.route = {}
+    CleanupHide()
 end
 
 function F.ToggleAutoFarm(state)
@@ -2507,15 +2663,5 @@ function F.ToggleRadar(state)
         radarActive = {}
     end
 end
-
--- ============================================================
---  ЭКСПОРТ для мобильной кнопки
--- ============================================================
-
-_G.RustedToggleFollow = function()
-    F.ToggleFreecamFollow(not FreecamFollow.enabled)
-end
-
-_G.RustedFeatures = F
 
 return F
